@@ -1,5 +1,5 @@
 #include <obs-module.h>
-#include <graphics/graphics.h>  // <--- This was missing!
+#include <graphics/graphics.h>
 #include <string>
 
 // ----------------------------------------------------------------------------
@@ -23,10 +23,19 @@ void zp_destroy(void* data) {
     delete p;
 }
 
+// NEW: Required for video sources
+uint32_t zp_get_width(void* data) {
+    return 1920;
+}
+
+// NEW: Required for video sources
+uint32_t zp_get_height(void* data) {
+    return 1080;
+}
+
 void zp_video_render(void* data, gs_effect_t* effect) {
-    // Correct C++ way to define a color
     struct vec4 color;
-    vec4_set(&color, 0.17f, 0.5f, 1.0f, 1.0f); // Blueish
+    vec4_set(&color, 0.17f, 0.5f, 1.0f, 1.0f); // Zoom Blue
     
     gs_clear(GS_CLEAR_COLOR, &color, 0.0f, 0);
 }
@@ -41,6 +50,8 @@ void init_zoom_participant() {
     zoom_participant_info.create = zp_create;
     zoom_participant_info.destroy = zp_destroy;
     zoom_participant_info.video_render = zp_video_render;
+    zoom_participant_info.get_width = zp_get_width;   // <--- Added
+    zoom_participant_info.get_height = zp_get_height; // <--- Added
 }
 
 
@@ -65,11 +76,20 @@ void zs_destroy(void* data) {
     delete p;
 }
 
-void zs_video_render(void* data, gs_effect_t* effect) {
-    // Correct C++ way to define a color
-    struct vec4 color;
-    vec4_set(&color, 0.0f, 0.8f, 0.2f, 1.0f); // Greenish
+// NEW: Required for video sources
+uint32_t zs_get_width(void* data) {
+    return 1920;
+}
 
+// NEW: Required for video sources
+uint32_t zs_get_height(void* data) {
+    return 1080;
+}
+
+void zs_video_render(void* data, gs_effect_t* effect) {
+    struct vec4 color;
+    vec4_set(&color, 0.0f, 0.8f, 0.2f, 1.0f); // Green
+    
     gs_clear(GS_CLEAR_COLOR, &color, 0.0f, 0);
 }
 
@@ -83,6 +103,8 @@ void init_zoom_screenshare() {
     zoom_screenshare_info.create = zs_create;
     zoom_screenshare_info.destroy = zs_destroy;
     zoom_screenshare_info.video_render = zs_video_render;
+    zoom_screenshare_info.get_width = zs_get_width;   // <--- Added
+    zoom_screenshare_info.get_height = zs_get_height; // <--- Added
 }
 
 
