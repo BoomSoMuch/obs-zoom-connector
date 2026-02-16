@@ -36,10 +36,10 @@
             "bundleId": "com.example.plugintemplate-for-obs"
         }
     },
-    "name": "plugintemplate-for-obs",
-    "displayName": "Plugin Template for OBS",
+    "name": "obs-zoom-connector",
+    "displayName": "Zoom Connector for OBS",
     "version": "1.0.0",
-    "author": "Your Name Here",
+    "author": "David Maldow",
     "website": "https://example.com",
     "email": "me@example.com"
 }
