@@ -1,4 +1,5 @@
 #include <obs-module.h>
+#include <graphics/graphics.h>  // <--- This was missing!
 #include <string>
 
 // ----------------------------------------------------------------------------
@@ -9,30 +10,27 @@ struct ZoomParticipantData {
     std::string name;
 };
 
-// Returns the display name of the source
 const char* zp_get_name(void* type_data) {
     return "Zoom Participant";
 }
 
-// Called when the user adds the source
 void* zp_create(obs_data_t* settings, obs_source_t* source) {
-    ZoomParticipantData* data = new ZoomParticipantData();
-    return data;
+    return new ZoomParticipantData();
 }
 
-// Called when the source is removed
 void zp_destroy(void* data) {
     ZoomParticipantData* p = static_cast<ZoomParticipantData*>(data);
     delete p;
 }
 
-// A dummy render function (draws a placeholder box so you can see it)
 void zp_video_render(void* data, gs_effect_t* effect) {
-    // This just clears the source area to a dark Zoom-blue color for the demo
-    gs_clear(GS_CLEAR_COLOR, (struct vec4*) & (struct vec4){0.17f, 0.5f, 1.0f, 1.0f}, 0.0f, 0);
+    // Correct C++ way to define a color
+    struct vec4 color;
+    vec4_set(&color, 0.17f, 0.5f, 1.0f, 1.0f); // Blueish
+    
+    gs_clear(GS_CLEAR_COLOR, &color, 0.0f, 0);
 }
 
-// Defines the source properties
 struct obs_source_info zoom_participant_info = {};
 
 void init_zoom_participant() {
@@ -59,8 +57,7 @@ const char* zs_get_name(void* type_data) {
 }
 
 void* zs_create(obs_data_t* settings, obs_source_t* source) {
-    ZoomScreenData* data = new ZoomScreenData();
-    return data;
+    return new ZoomScreenData();
 }
 
 void zs_destroy(void* data) {
@@ -69,8 +66,11 @@ void zs_destroy(void* data) {
 }
 
 void zs_video_render(void* data, gs_effect_t* effect) {
-    // Clears to a green color to distinguish it from participants
-    gs_clear(GS_CLEAR_COLOR, (struct vec4*) & (struct vec4){0.0f, 0.8f, 0.2f, 1.0f}, 0.0f, 0);
+    // Correct C++ way to define a color
+    struct vec4 color;
+    vec4_set(&color, 0.0f, 0.8f, 0.2f, 1.0f); // Greenish
+
+    gs_clear(GS_CLEAR_COLOR, &color, 0.0f, 0);
 }
 
 struct obs_source_info zoom_screenshare_info = {};
@@ -94,11 +94,9 @@ OBS_DECLARE_MODULE()
 OBS_MODULE_USE_DEFAULT_LOCALE("obs-zoom-connector", "en-US")
 
 bool obs_module_load(void) {
-    // Initialize our structure data
     init_zoom_participant();
     init_zoom_screenshare();
 
-    // Register the sources with OBS
     obs_register_source(&zoom_participant_info);
     obs_register_source(&zoom_screenshare_info);
 
