@@ -18,7 +18,20 @@ include(helpers)
 add_library(${CMAKE_PROJECT_NAME} MODULE)
 
 find_package(libobs REQUIRED)
-target_link_libraries(${CMAKE_PROJECT_NAME} PRIVATE OBS::libobs)
+
+# --- NEW: Fetch IXWebSocket Library ---
+include(FetchContent)
+FetchContent_Declare(
+    ixwebsocket
+    GIT_REPOSITORY https://github.com/machinezone/IXWebSocket.git
+    GIT_TAG        v11.4.4
+)
+set(IXWEBSOCKET_BUILD_TESTS OFF CACHE BOOL "" FORCE)
+set(IXWEBSOCKET_USE_TLS OFF CACHE BOOL "" FORCE)
+FetchContent_MakeAvailable(ixwebsocket)
+# --------------------------------------
+
+target_link_libraries(${CMAKE_PROJECT_NAME} PRIVATE OBS::libobs ixwebsocket ws2_32 crypt32)
 
 if(ENABLE_FRONTEND_API)
   find_package(obs-frontend-api REQUIRED)
