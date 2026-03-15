@@ -28,6 +28,14 @@ FetchContent_Declare(
 )
 set(IXWEBSOCKET_BUILD_TESTS OFF CACHE BOOL "" FORCE)
 set(IXWEBSOCKET_USE_TLS OFF CACHE BOOL "" FORCE)
+
+# --- FIX: Tell the compiler to relax and not treat warnings as errors ---
+set(CMAKE_COMPILE_WARNING_AS_ERROR OFF)
+if(MSVC)
+    add_compile_options(/WX-)
+endif()
+# ------------------------------------------------------------------------
+
 FetchContent_MakeAvailable(ixwebsocket)
 # --------------------------------------
 
