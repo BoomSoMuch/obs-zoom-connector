@@ -38,7 +38,11 @@ endif()
 
 FetchContent_MakeAvailable(ixwebsocket)
 # --------------------------------------
-
+# --- NEW: Fetch stb_image for JPEG decoding ---
+   file(DOWNLOAD "https://raw.githubusercontent.com/nothings/stb/master/stb_image.h"
+        "${CMAKE_CURRENT_BINARY_DIR}/stb/stb_image.h")
+   target_include_directories(${CMAKE_PROJECT_NAME} PRIVATE "${CMAKE_CURRENT_BINARY_DIR}/stb")
+   # ----------------------------------------------
 target_link_libraries(${CMAKE_PROJECT_NAME} PRIVATE OBS::libobs ixwebsocket ws2_32 crypt32)
 
 if(ENABLE_FRONTEND_API)
