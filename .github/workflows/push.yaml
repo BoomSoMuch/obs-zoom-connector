@@ -11,7 +11,7 @@ on:
 permissions:
   contents: write
 
-
+jobs:
   build-project:
     name: Build Project 🧱
     uses: ./.github/workflows/build-project.yaml
