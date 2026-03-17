@@ -98,7 +98,9 @@ void setup_websocket() {
                         
                         while (avcodec_receive_frame(g_codec_ctx, g_frame) == 0) {
                             
-                            struct obs_source_frame obs_frame = {};
+                            // --- THE BLACK SCREEN FIX ---
+                            // Upgrade to obs_source_frame2 to safely handle the color matrix
+                            struct obs_source_frame2 obs_frame = {};
                             obs_frame.format = VIDEO_FORMAT_I420; 
                             obs_frame.width = g_frame->width;
                             obs_frame.height = g_frame->height;
@@ -109,22 +111,25 @@ void setup_websocket() {
                             obs_frame.linesize[1] = g_frame->linesize[1];
                             obs_frame.linesize[2] = g_frame->linesize[2];
                             
+                            // Tell OBS exactly how to read the YUV colors
+                            obs_frame.range = VIDEO_RANGE_PARTIAL;
+                            obs_frame.color_space = VIDEO_CS_DEFAULT;
+                            
                             // --- THE PACEMAKER ---
                             static uint64_t next_timestamp = 0;
                             uint64_t now = os_gettime_ns();
                             
-                            // Sync the clock to right now if we fell behind
-                            if (next_timestamp == 0 || next_timestamp < now) {
+                            // If we lag behind by more than 100ms, snap the clock back to 'now'
+                            if (next_timestamp == 0 || next_timestamp < now - 100000000ULL) {
                                 next_timestamp = now; 
                             }
                             
                             obs_frame.timestamp = next_timestamp;
-                            
-                            // Advance clock by 33.3ms for perfect 30fps
-                            next_timestamp += 33333333ULL;
+                            next_timestamp += 33333333ULL; // 30 FPS
                             // ---------------------
                             
-                            obs_source_output_video(g_zoom_gallery_source, &obs_frame);
+                            // Output using the V2 API!
+                            obs_source_output_video2(g_zoom_gallery_source, &obs_frame);
                         }
                     }
                 }
