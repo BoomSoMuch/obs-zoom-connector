@@ -82,44 +82,58 @@ void setup_websocket() {
         else if (msg->type == ix::WebSocketMessageType::Message) {
             if (!g_zoom_gallery_source) return;
 
-            // 1. Grab the raw network packet
+            // TELEMETRY 1: Are we getting data?
+            static int msg_count = 0;
+            if (msg_count < 5) {
+                blog(LOG_INFO, "[Zoom RTMS] WS Message Received. Size: %zu bytes", msg->str.size());
+                msg_count++;
+            }
+
             uint8_t* data = (uint8_t*)msg->str.data();
             size_t data_size = msg->str.size();
             
-            // 2. Feed it through the FFmpeg parser
             while (data_size > 0) {
                 int ret = av_parser_parse2(g_parser, g_codec_ctx, &g_pkt->data, &g_pkt->size,
                                            data, static_cast<int>(data_size), AV_NOPTS_VALUE, AV_NOPTS_VALUE, 0);
-                if (ret < 0) break;
+                if (ret < 0) {
+                    blog(LOG_ERROR, "[Zoom RTMS] FFmpeg Parser Error!");
+                    break;
+                }
                 
                 data += ret;
                 data_size -= ret;
                 
                 if (g_pkt->size) {
-                    // 3. Send the packet to the decoder
-                    if (avcodec_send_packet(g_codec_ctx, g_pkt) == 0) {
-                        // 4. Catch the decoded raw pixels!
-                        while (avcodec_receive_frame(g_codec_ctx, g_frame) == 0) {
-                            
-                            // 5. Package the pixels for OBS (YUV420 format)
-                            struct obs_source_frame obs_frame = {};
-                            obs_frame.format = VIDEO_FORMAT_I420; 
-                            obs_frame.width = g_frame->width;
-                            obs_frame.height = g_frame->height;
-                            
-                            obs_frame.data[0] = g_frame->data[0];
-                            obs_frame.data[1] = g_frame->data[1];
-                            obs_frame.data[2] = g_frame->data[2];
-                            
-                            obs_frame.linesize[0] = g_frame->linesize[0];
-                            obs_frame.linesize[1] = g_frame->linesize[1];
-                            obs_frame.linesize[2] = g_frame->linesize[2];
-                            
-                            obs_frame.timestamp = os_gettime_ns();
-                            
-                            // 6. Push to screen!
-                            obs_source_output_video(g_zoom_gallery_source, &obs_frame);
+                    int send_ret = avcodec_send_packet(g_codec_ctx, g_pkt);
+                    if (send_ret != 0) {
+                        static int err_count = 0;
+                        if (err_count < 5) {
+                            blog(LOG_WARNING, "[Zoom RTMS] FFmpeg send_packet failed with code: %d", send_ret);
+                            err_count++;
                         }
+                    }
+                    
+                    while (avcodec_receive_frame(g_codec_ctx, g_frame) == 0) {
+                        // TELEMETRY 2: Did we actually decode a frame?!
+                        static int frame_count = 0;
+                        if (frame_count < 5) {
+                            blog(LOG_INFO, "[Zoom RTMS] SUCCESS! Frame decoded! Width: %d", g_frame->width);
+                            frame_count++;
+                        }
+                        
+                        struct obs_source_frame obs_frame = {};
+                        obs_frame.format = VIDEO_FORMAT_I420; 
+                        obs_frame.width = g_frame->width;
+                        obs_frame.height = g_frame->height;
+                        obs_frame.data[0] = g_frame->data[0];
+                        obs_frame.data[1] = g_frame->data[1];
+                        obs_frame.data[2] = g_frame->data[2];
+                        obs_frame.linesize[0] = g_frame->linesize[0];
+                        obs_frame.linesize[1] = g_frame->linesize[1];
+                        obs_frame.linesize[2] = g_frame->linesize[2];
+                        obs_frame.timestamp = os_gettime_ns();
+                        
+                        obs_source_output_video(g_zoom_gallery_source, &obs_frame);
                     }
                 }
             }
@@ -127,7 +141,6 @@ void setup_websocket() {
     });
     g_webSocket.start();
 }
-
 // ----------------------------------------------------------------------------
 // PLUGIN REGISTRATION
 // ----------------------------------------------------------------------------
