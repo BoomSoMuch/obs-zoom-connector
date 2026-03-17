@@ -108,7 +108,7 @@ void setup_websocket() {
                                         total_luma += g_frame->data[0][y * g_frame->linesize[0] + x];
                                     }
                                 }
-                                int avg_luma = total_luma / (g_frame->width * g_frame->height);
+                                int avg_luma = (int)(total_luma / (g_frame->width * g_frame->height));
                                 
                                 blog(LOG_INFO, "[Zoom RTMS] FRAME %d ALIVE! Format: %d | Width: %d | Avg Brightness: %d", 
                                      frame_count, g_frame->format, g_frame->width, avg_luma);
