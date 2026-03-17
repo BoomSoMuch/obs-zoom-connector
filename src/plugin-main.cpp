@@ -60,7 +60,8 @@ public:
                         if (avcodec_send_packet(codec_ctx, pkt) == 0) {
                             while (avcodec_receive_frame(codec_ctx, frame) == 0) {
                                 
-                                struct obs_source_frame2 obs_frame = {};
+                                // REVERTED TO PROVEN V1 API
+                                struct obs_source_frame obs_frame = {};
                                 obs_frame.format = VIDEO_FORMAT_I420; 
                                 obs_frame.width = frame->width;
                                 obs_frame.height = frame->height;
@@ -71,8 +72,7 @@ public:
                                 obs_frame.linesize[1] = frame->linesize[1];
                                 obs_frame.linesize[2] = frame->linesize[2];
                                 
-                                obs_frame.range = VIDEO_RANGE_PARTIAL;
-                                obs_frame.color_space = VIDEO_CS_DEFAULT;
+                                // PROVEN COLOR MATRIX FIX
                                 video_format_get_parameters(VIDEO_CS_DEFAULT, VIDEO_RANGE_PARTIAL, 
                                                             obs_frame.color_matrix, 
                                                             obs_frame.color_range_min, 
@@ -85,7 +85,8 @@ public:
                                 obs_frame.timestamp = next_timestamp;
                                 next_timestamp += 33333333ULL; 
                                 
-                                obs_source_output_video2(source, &obs_frame);
+                                // OUTPUT VIA V1 API
+                                obs_source_output_video(source, &obs_frame);
                             }
                         }
                     }
@@ -96,7 +97,6 @@ public:
     }
 
     ~ZoomSource() {
-        // Safely destroy everything when the user deletes the source in OBS
         webSocket.stop();
         if (parser) av_parser_close(parser);
         if (codec_ctx) avcodec_free_context(&codec_ctx);
@@ -106,7 +106,7 @@ public:
 };
 
 // ----------------------------------------------------------------------------
-// OBS C-API BRIDGES (Connecting the UI to our Class)
+// OBS C-API BRIDGES
 // ----------------------------------------------------------------------------
 void* zg_create(obs_data_t* settings, obs_source_t* source) { return new ZoomSource(source, "Gallery"); }
 void* zp_create(obs_data_t* settings, obs_source_t* source) { return new ZoomSource(source, "Participant"); }
