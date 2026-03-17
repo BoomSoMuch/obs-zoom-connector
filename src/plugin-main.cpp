@@ -1,13 +1,13 @@
-#define STB_IMAGE_IMPLEMENTATION
-#include <stb_image.h>
+extern "C" {
+#include <libavcodec/avcodec.h>
+#include <libavutil/avutil.h>
+}
 #include <obs-module.h>
-#include <util/platform.h>
-#include <graphics/graphics.h>
 #include <ixwebsocket/IXWebSocket.h>
 #include <string>
 
 // ----------------------------------------------------------------------------
-// 1 & 2. PARTICIPANT & SCREENSHARE (Keeping these as colored boxes for now)
+// DUMMY SOURCES (Participant & Screenshare)
 // ----------------------------------------------------------------------------
 struct DummyData { std::string name; };
 void* dummy_create(obs_data_t*, obs_source_t*) { return new DummyData(); }
@@ -26,9 +26,8 @@ void zs_video_render(void*, gs_effect_t*) {
 struct obs_source_info zoom_screenshare_info = {};
 
 // ----------------------------------------------------------------------------
-// 3. ZOOM GALLERY SOURCE (The real video feed!)
+// ZOOM GALLERY SOURCE (ASYNC VIDEO)
 // ----------------------------------------------------------------------------
-// We need a global pointer so the WebSocket can push frames directly to this source
 obs_source_t* g_zoom_gallery_source = nullptr;
 
 void* zg_create(obs_data_t* settings, obs_source_t* source) {
@@ -39,51 +38,92 @@ void zg_destroy(void* data) {
     g_zoom_gallery_source = nullptr;
     delete static_cast<DummyData*>(data);
 }
-
 struct obs_source_info zoom_gallery_info = {};
 
 // ----------------------------------------------------------------------------
-// WEBSOCKET RECEIVER & DECODER
+// FFMPEG DECODER STATE
+// ----------------------------------------------------------------------------
+const AVCodec* g_codec = nullptr;
+AVCodecContext* g_codec_ctx = nullptr;
+AVCodecParserContext* g_parser = nullptr;
+AVPacket* g_pkt = nullptr;
+AVFrame* g_frame = nullptr;
+
+void init_ffmpeg() {
+    g_codec = avcodec_find_decoder(AV_CODEC_ID_H264);
+    g_parser = av_parser_init(g_codec->id);
+    g_codec_ctx = avcodec_alloc_context3(g_codec);
+    avcodec_open2(g_codec_ctx, g_codec, NULL);
+    g_pkt = av_packet_alloc();
+    g_frame = av_frame_alloc();
+}
+
+void cleanup_ffmpeg() {
+    if (g_parser) av_parser_close(g_parser);
+    if (g_codec_ctx) avcodec_free_context(&g_codec_ctx);
+    if (g_frame) av_frame_free(&g_frame);
+    if (g_pkt) av_packet_free(&g_pkt);
+}
+
+// ----------------------------------------------------------------------------
+// WEBSOCKET RECEIVER
 // ----------------------------------------------------------------------------
 static ix::WebSocket g_webSocket;
 
 void setup_websocket() {
-    g_webSocket.setUrl("ws://localhost:8765");
+    init_ffmpeg(); // Turn on the brain
     
+    g_webSocket.setUrl("ws://localhost:8765");
     g_webSocket.setOnMessageCallback([](const ix::WebSocketMessagePtr& msg) {
         if (msg->type == ix::WebSocketMessageType::Open) {
             blog(LOG_INFO, "[Zoom RTMS] CONNECTED TO FAKE ZOOM SERVER!");
         }
         else if (msg->type == ix::WebSocketMessageType::Message) {
-            // If the user hasn't added the Zoom Gallery source to their scene yet, do nothing.
-            if (!g_zoom_gallery_source) return; 
+            if (!g_zoom_gallery_source) return;
 
-            // 1. Decode the incoming JPEG bytes into raw RGBA pixels
-            int width, height, channels;
-            unsigned char* pixels = stbi_load_from_memory(
-                reinterpret_cast<const stbi_uc*>(msg->str.data()),
-                static_cast<int>(msg->str.size()),
-                &width, &height, &channels, 4); // Force 4 channels (RGBA)
-
-            if (pixels) {
-                // 2. Wrap the pixels in an OBS video frame
-                struct obs_source_frame frame = {};
-                frame.format = VIDEO_FORMAT_RGBA;
-                frame.width = width;
-                frame.height = height;
-                frame.linesize[0] = width * 4;
-                frame.data[0] = pixels;
-                frame.timestamp = os_gettime_ns(); // Give it a timestamp so OBS knows when to play it
-
-                // 3. Push the frame directly into the OBS video pipeline!
-                obs_source_output_video(g_zoom_gallery_source, &frame);
-
-                // 4. Clean up the memory so we don't crash
-                stbi_image_free(pixels);
+            // 1. Grab the raw network packet
+            uint8_t* data = (uint8_t*)msg->str.data();
+            size_t data_size = msg->str.size();
+            
+            // 2. Feed it through the FFmpeg parser
+            while (data_size > 0) {
+                int ret = av_parser_parse2(g_parser, g_codec_ctx, &g_pkt->data, &g_pkt->size,
+                                           data, static_cast<int>(data_size), AV_NOPTS_VALUE, AV_NOPTS_VALUE, 0);
+                if (ret < 0) break;
+                
+                data += ret;
+                data_size -= ret;
+                
+                if (g_pkt->size) {
+                    // 3. Send the packet to the decoder
+                    if (avcodec_send_packet(g_codec_ctx, g_pkt) == 0) {
+                        // 4. Catch the decoded raw pixels!
+                        while (avcodec_receive_frame(g_codec_ctx, g_frame) == 0) {
+                            
+                            // 5. Package the pixels for OBS (YUV420 format)
+                            struct obs_source_frame obs_frame = {};
+                            obs_frame.format = VIDEO_FORMAT_I420; 
+                            obs_frame.width = g_frame->width;
+                            obs_frame.height = g_frame->height;
+                            
+                            obs_frame.data[0] = g_frame->data[0];
+                            obs_frame.data[1] = g_frame->data[1];
+                            obs_frame.data[2] = g_frame->data[2];
+                            
+                            obs_frame.linesize[0] = g_frame->linesize[0];
+                            obs_frame.linesize[1] = g_frame->linesize[1];
+                            obs_frame.linesize[2] = g_frame->linesize[2];
+                            
+                            obs_frame.timestamp = os_gettime_ns();
+                            
+                            // 6. Push to screen!
+                            obs_source_output_video(g_zoom_gallery_source, &obs_frame);
+                        }
+                    }
+                }
             }
         }
     });
-    
     g_webSocket.start();
 }
 
@@ -94,7 +134,6 @@ OBS_DECLARE_MODULE()
 OBS_MODULE_USE_DEFAULT_LOCALE("obs-zoom-connector", "en-US")
 
 bool obs_module_load(void) {
-    // Setup Participant Info
     zoom_participant_info.id = "zoom_participant_source";
     zoom_participant_info.type = OBS_SOURCE_TYPE_INPUT;
     zoom_participant_info.output_flags = OBS_SOURCE_VIDEO;
@@ -105,7 +144,6 @@ bool obs_module_load(void) {
     zoom_participant_info.get_width = dummy_get_width;
     zoom_participant_info.get_height = dummy_get_height;
 
-    // Setup Screenshare Info
     zoom_screenshare_info.id = "zoom_screenshare_source";
     zoom_screenshare_info.type = OBS_SOURCE_TYPE_INPUT;
     zoom_screenshare_info.output_flags = OBS_SOURCE_VIDEO;
@@ -116,7 +154,6 @@ bool obs_module_load(void) {
     zoom_screenshare_info.get_width = dummy_get_width;
     zoom_screenshare_info.get_height = dummy_get_height;
 
-    // Setup Gallery Info (NOTICE: It is now ASYNC_VIDEO, which means it receives live frames!)
     zoom_gallery_info.id = "zoom_gallery_source";
     zoom_gallery_info.type = OBS_SOURCE_TYPE_INPUT;
     zoom_gallery_info.output_flags = OBS_SOURCE_ASYNC_VIDEO; 
@@ -134,4 +171,5 @@ bool obs_module_load(void) {
 
 void obs_module_unload(void) {
     g_webSocket.stop();
+    cleanup_ffmpeg();
 }
