@@ -38,10 +38,25 @@ endif()
 
 FetchContent_MakeAvailable(ixwebsocket)
 # --------------------------------------
-# --- NEW: Fetch stb_image for JPEG decoding ---
-   file(DOWNLOAD "https://raw.githubusercontent.com/nothings/stb/master/stb_image.h"
-        "${CMAKE_CURRENT_BINARY_DIR}/stb/stb_image.h")
-   target_include_directories(${CMAKE_PROJECT_NAME} PRIVATE "${CMAKE_CURRENT_BINARY_DIR}/stb")
+# --- NEW: Fetch FFmpeg for H.264 decoding ---
+   set(FFMPEG_ZIP "ffmpeg-master-latest-win64-gpl-shared.zip")
+   set(FFMPEG_URL "https://github.com/BtbN/FFmpeg-Builds/releases/download/latest/${FFMPEG_ZIP}")
+   set(FFMPEG_DIR "${CMAKE_CURRENT_BINARY_DIR}/ffmpeg")
+
+   if(NOT EXISTS "${FFMPEG_DIR}")
+       message(STATUS "Downloading FFmpeg Dev Libraries...")
+       file(DOWNLOAD "${FFMPEG_URL}" "${CMAKE_CURRENT_BINARY_DIR}/${FFMPEG_ZIP}")
+       execute_process(COMMAND ${CMAKE_COMMAND} -E tar xf "${CMAKE_CURRENT_BINARY_DIR}/${FFMPEG_ZIP}" WORKING_DIRECTORY "${CMAKE_CURRENT_BINARY_DIR}")
+       file(RENAME "${CMAKE_CURRENT_BINARY_DIR}/ffmpeg-master-latest-win64-gpl-shared" "${FFMPEG_DIR}")
+   endif()
+
+   target_include_directories(${CMAKE_PROJECT_NAME} PRIVATE "${FFMPEG_DIR}/include")
+   target_link_directories(${CMAKE_PROJECT_NAME} PRIVATE "${FFMPEG_DIR}/lib")
+   target_link_libraries(${CMAKE_PROJECT_NAME} PRIVATE avcodec avutil)
+
+   # Bundle the FFmpeg DLLs into our final zip file so OBS can use them!
+   file(GLOB FFMPEG_DLLS "${FFMPEG_DIR}/bin/*.dll")
+   install(FILES ${FFMPEG_DLLS} DESTINATION bin/64bit)
    # ----------------------------------------------
 target_link_libraries(${CMAKE_PROJECT_NAME} PRIVATE OBS::libobs ixwebsocket ws2_32 crypt32)
 
