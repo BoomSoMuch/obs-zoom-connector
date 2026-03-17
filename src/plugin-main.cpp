@@ -98,24 +98,6 @@ void setup_websocket() {
                         
                         while (avcodec_receive_frame(g_codec_ctx, g_frame) == 0) {
                             
-                            // --- DIAGNOSTIC PROBE ---
-                            static int frame_count = 0;
-                            if (frame_count < 10) {
-                                uint64_t total_luma = 0;
-                                // Read the raw pixel data to calculate average brightness
-                                for (int y = 0; y < g_frame->height; y++) {
-                                    for (int x = 0; x < g_frame->width; x++) {
-                                        total_luma += g_frame->data[0][y * g_frame->linesize[0] + x];
-                                    }
-                                }
-                                int avg_luma = (int)(total_luma / (g_frame->width * g_frame->height));
-                                
-                                blog(LOG_INFO, "[Zoom RTMS] FRAME %d ALIVE! Format: %d | Width: %d | Avg Brightness: %d", 
-                                     frame_count, g_frame->format, g_frame->width, avg_luma);
-                                frame_count++;
-                            }
-                            // ------------------------
-
                             struct obs_source_frame obs_frame = {};
                             obs_frame.format = VIDEO_FORMAT_I420; 
                             obs_frame.width = g_frame->width;
@@ -127,8 +109,20 @@ void setup_websocket() {
                             obs_frame.linesize[1] = g_frame->linesize[1];
                             obs_frame.linesize[2] = g_frame->linesize[2];
                             
-                            // Force OBS to draw immediately by disabling the clock sync
-                            obs_frame.timestamp = 0; 
+                            // --- THE PACEMAKER ---
+                            static uint64_t next_timestamp = 0;
+                            uint64_t now = os_gettime_ns();
+                            
+                            // Sync the clock to right now if we fell behind
+                            if (next_timestamp == 0 || next_timestamp < now) {
+                                next_timestamp = now; 
+                            }
+                            
+                            obs_frame.timestamp = next_timestamp;
+                            
+                            // Advance clock by 33.3ms for perfect 30fps
+                            next_timestamp += 33333333ULL;
+                            // ---------------------
                             
                             obs_source_output_video(g_zoom_gallery_source, &obs_frame);
                         }
