@@ -3,6 +3,7 @@ extern "C" {
 #include <libavutil/avutil.h>
 }
 #include <obs-module.h>
+#include <util/platform.h>
 #include <ixwebsocket/IXWebSocket.h>
 #include <string>
 
