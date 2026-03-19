@@ -86,3 +86,8 @@ endif()
 target_sources(${CMAKE_PROJECT_NAME} PRIVATE src/plugin-main.cpp)
 
 set_target_properties_plugin(${CMAKE_PROJECT_NAME} PROPERTIES OUTPUT_NAME ${_name})
+# --- FIX: Force the DLL into the correct drag-and-drop folder ---
+install(TARGETS ${CMAKE_PROJECT_NAME}
+    LIBRARY DESTINATION ${OBS_PLUGIN_DESTINATION}
+    RUNTIME DESTINATION ${OBS_PLUGIN_DESTINATION}
+)
