@@ -58,6 +58,11 @@ FetchContent_MakeAvailable(ixwebsocket)
    file(GLOB FFMPEG_DLLS "${FFMPEG_DIR}/bin/*.dll")
    install(FILES ${FFMPEG_DLLS} DESTINATION bin/64bit)
    # ----------------------------------------------
+# --- NEW: Connect the Zoom Meeting SDK ---
+target_include_directories(${CMAKE_PROJECT_NAME} PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}/zoom-sdk/h")
+target_link_directories(${CMAKE_PROJECT_NAME} PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}/zoom-sdk/lib")
+target_link_libraries(${CMAKE_PROJECT_NAME} PRIVATE sdk)
+# -----------------------------------------   
 target_link_libraries(${CMAKE_PROJECT_NAME} PRIVATE OBS::libobs ixwebsocket ws2_32 crypt32)
 
 if(ENABLE_FRONTEND_API)
