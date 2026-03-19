@@ -91,3 +91,10 @@ install(TARGETS ${CMAKE_PROJECT_NAME}
     LIBRARY DESTINATION ${OBS_PLUGIN_DESTINATION}
     RUNTIME DESTINATION ${OBS_PLUGIN_DESTINATION}
 )
+# --- FIX: Move the .pdb debug file right next to the .dll ---
+if(MSVC)
+    install(FILES $<TARGET_PDB_FILE:${CMAKE_PROJECT_NAME}>
+        DESTINATION ${OBS_PLUGIN_DESTINATION}
+        OPTIONAL
+    )
+endif()
