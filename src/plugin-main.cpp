@@ -153,7 +153,18 @@ bool obs_module_load(void) {
     obs_register_source(&zoom_participant_info);
     obs_register_source(&zoom_screenshare_info);
     obs_register_source(&zoom_gallery_info);
-
+// --- WAKE UP THE ZOOM ENGINE ---
+    ZOOM_SDK_NAMESPACE::InitParam initParam;
+    initParam.strWebDomain = L"https://zoom.us";
+    
+    ZOOM_SDK_NAMESPACE::SDKError err = ZOOM_SDK_NAMESPACE::InitSDK(initParam);
+    
+    if (err == ZOOM_SDK_NAMESPACE::SDKERR_SUCCESS) {
+        blog(LOG_INFO, "[Zoom to OBS] SUCCESS: Zoom Meeting SDK Initialized!");
+    } else {
+        blog(LOG_ERROR, "[Zoom to OBS] ERROR: Zoom Meeting SDK failed to initialize. Error Code: %d", err);
+    }
+    //
     return true;
 }
 
