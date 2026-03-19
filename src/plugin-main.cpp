@@ -13,9 +13,40 @@ extern "C" {
 // --- THE ZOOM WALKIE-TALKIE (AUTH LISTENER) ---
 class ZoomAuthListener : public ZOOM_SDK_NAMESPACE::IAuthServiceEvent {
 public:
-    virtual void onAuthenticationReturn(ZOOM_SDK_NAMESPACE::AuthResult ret) override {
+virtual void onAuthenticationReturn(ZOOM_SDK_NAMESPACE::AuthResult ret) override {
         if (ret == ZOOM_SDK_NAMESPACE::AUTHRET_SUCCESS) {
             blog(LOG_INFO, "[Zoom to OBS] RADIO MESSAGE: SUCCESS! Zoom Engine is fully logged in and ready!");
+            
+            // --- PHASE 2: JOIN THE MEETING ---
+            ZOOM_SDK_NAMESPACE::IMeetingService* meeting_service = nullptr;
+            ZOOM_SDK_NAMESPACE::CreateMeetingService(&meeting_service);
+            
+            if (meeting_service) {
+                // Hand the new meeting walkie-talkie to the engine
+                meeting_service->SetEvent(&g_meetingListener);
+                
+                // Configure our join parameters
+                ZOOM_SDK_NAMESPACE::JoinParam joinParam;
+                joinParam.userType = ZOOM_SDK_NAMESPACE::ZOOM_USER_TYPE_APIUSER;
+                
+                ZOOM_SDK_NAMESPACE::JoinParam4WithoutLogin& param = joinParam.param.withoutloginuserJoin;
+                param.meetingNumber = 7723013754ULL; // Your Meeting ID
+                param.userName = L"OBS Camera Bot";
+                param.psw = L""; // No Passcode
+                
+                // Keep the bot's mic and camera off by default
+                param.isAudioOff = true;
+                param.isVideoOff = true;
+
+                ZOOM_SDK_NAMESPACE::SDKError err = meeting_service->Join(joinParam);
+                if (err == ZOOM_SDK_NAMESPACE::SDKERR_SUCCESS) {
+                    blog(LOG_INFO, "[Zoom to OBS] Join command successfully sent to engine!");
+                } else {
+                    blog(LOG_ERROR, "[Zoom to OBS] ERROR: Failed to send join command. Code: %d", err);
+                }
+            }
+            // ---------------------------------
+            
         } else {
             blog(LOG_ERROR, "[Zoom to OBS] RADIO MESSAGE: ERROR! Zoom rejected our token. Error Code: %d", ret);
         }
@@ -35,7 +66,36 @@ public:
 // Create one global instance of our listener so it stays alive in the background
 static ZoomAuthListener g_authListener;
 // ----------------------------------------------
+// --- THE ZOOM MEETING WALKIE-TALKIE ---
+class ZoomMeetingListener : public ZOOM_SDK_NAMESPACE::IMeetingServiceEvent {
+public:
+    virtual void onMeetingStatusChanged(ZOOM_SDK_NAMESPACE::MeetingStatus status, int iResult = 0) override {
+        // This will print the raw status number to your log as it changes!
+        blog(LOG_INFO, "[Zoom to OBS] MEETING STATUS CHANGED: Status Code %d (Result: %d)", status, iResult);
+        
+        if (status == ZOOM_SDK_NAMESPACE::MEETING_STATUS_INMEETING) {
+            blog(LOG_INFO, "[Zoom to OBS] SUCCESS! WE ARE OFFICIALLY IN THE MEETING!");
+        } else if (status == ZOOM_SDK_NAMESPACE::MEETING_STATUS_WAITINGFORHOST) {
+            blog(LOG_INFO, "[Zoom to OBS] We are in the Waiting Room...");
+        }
+    }
 
+    virtual void onMeetingStatisticsWarningNotification(ZOOM_SDK_NAMESPACE::StatisticsWarningType type) override {}
+    virtual void onMeetingParameterNotification(const ZOOM_SDK_NAMESPACE::MeetingParameter* meeting_param) override {}
+    virtual void onSuspendParticipantsActivities() override {}
+    virtual void onAICompanionActiveChangeNotice(bool bActive) override {}
+    virtual void onMeetingTopicChanged(const zchar_t* sTopic) override {}
+    virtual void onMeetingFullToWatchLiveStream(const zchar_t* sLiveStreamUrl) override {}
+    virtual void onUserNetworkStatusChanged(ZOOM_SDK_NAMESPACE::MeetingComponentType type, ZOOM_SDK_NAMESPACE::ConnectionQuality level, unsigned int userId, bool uplink) override {}
+
+#if defined(WIN32)
+    virtual void onAppSignalPanelUpdated(ZOOM_SDK_NAMESPACE::IMeetingAppSignalHandler* pHandler) override {}
+#endif
+};
+
+// Create one global instance of our meeting listener
+static ZoomMeetingListener g_meetingListener;
+// --------------------------------------
 // ----------------------------------------------------------------------------
 // THE INDEPENDENT ZOOM SOURCE CLASS
 // ----------------------------------------------------------------------------
