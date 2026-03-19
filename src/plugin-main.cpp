@@ -190,7 +190,12 @@ bool obs_module_load(void) {
         ZOOM_SDK_NAMESPACE::IAuthService* auth_service = nullptr;
         err = ZOOM_SDK_NAMESPACE::CreateAuthService(&auth_service);
         
-        if (err == ZOOM_SDK_NAMESPACE::SDKERR_SUCCESS && auth_service) {
+if (err == ZOOM_SDK_NAMESPACE::SDKERR_SUCCESS && auth_service) {
+            
+            // --- NEW: Hand the walkie-talkie to Zoom ---
+            auth_service->SetEvent(&g_authListener);
+            // -------------------------------------------
+
             ZOOM_SDK_NAMESPACE::AuthContext authContext;
             
             // PASTE YOUR JWT TOKEN HERE:
