@@ -12,10 +12,40 @@ extern "C" {
 #include "meeting_service_interface.h"
 
 
-// --- THE ZOOM WALKIE-TALKIE (AUTH LISTENER) ---
+// --- 1. THE ZOOM MEETING WALKIE-TALKIE (Must go first!) ---
+class ZoomMeetingListener : public ZOOM_SDK_NAMESPACE::IMeetingServiceEvent {
+public:
+    virtual void onMeetingStatusChanged(ZOOM_SDK_NAMESPACE::MeetingStatus status, int iResult = 0) override {
+        blog(LOG_INFO, "[Zoom to OBS] MEETING STATUS CHANGED: Status Code %d (Result: %d)", status, iResult);
+        
+        if (status == ZOOM_SDK_NAMESPACE::MEETING_STATUS_INMEETING) {
+            blog(LOG_INFO, "[Zoom to OBS] SUCCESS! WE ARE OFFICIALLY IN THE MEETING!");
+        } else if (status == ZOOM_SDK_NAMESPACE::MEETING_STATUS_WAITINGFORHOST) {
+            blog(LOG_INFO, "[Zoom to OBS] We are in the Waiting Room...");
+        }
+    }
+
+    virtual void onMeetingStatisticsWarningNotification(ZOOM_SDK_NAMESPACE::StatisticsWarningType type) override {}
+    virtual void onMeetingParameterNotification(const ZOOM_SDK_NAMESPACE::MeetingParameter* meeting_param) override {}
+    virtual void onSuspendParticipantsActivities() override {}
+    virtual void onAICompanionActiveChangeNotice(bool bActive) override {}
+    virtual void onMeetingTopicChanged(const zchar_t* sTopic) override {}
+    virtual void onMeetingFullToWatchLiveStream(const zchar_t* sLiveStreamUrl) override {}
+    virtual void onUserNetworkStatusChanged(ZOOM_SDK_NAMESPACE::MeetingComponentType type, ZOOM_SDK_NAMESPACE::ConnectionQuality level, unsigned int userId, bool uplink) override {}
+
+#if defined(WIN32)
+    virtual void onAppSignalPanelUpdated(ZOOM_SDK_NAMESPACE::IMeetingAppSignalHandler* pHandler) override {}
+#endif
+};
+
+// Create the global instance BEFORE the Auth Listener tries to use it
+static ZoomMeetingListener g_meetingListener;
+// ----------------------------------------------------------
+
+// --- 2. THE ZOOM WALKIE-TALKIE (AUTH LISTENER) ---
 class ZoomAuthListener : public ZOOM_SDK_NAMESPACE::IAuthServiceEvent {
 public:
-virtual void onAuthenticationReturn(ZOOM_SDK_NAMESPACE::AuthResult ret) override {
+    virtual void onAuthenticationReturn(ZOOM_SDK_NAMESPACE::AuthResult ret) override {
         if (ret == ZOOM_SDK_NAMESPACE::AUTHRET_SUCCESS) {
             blog(LOG_INFO, "[Zoom to OBS] RADIO MESSAGE: SUCCESS! Zoom Engine is fully logged in and ready!");
             
@@ -24,12 +54,14 @@ virtual void onAuthenticationReturn(ZOOM_SDK_NAMESPACE::AuthResult ret) override
             ZOOM_SDK_NAMESPACE::CreateMeetingService(&meeting_service);
             
             if (meeting_service) {
-                // Hand the new meeting walkie-talkie to the engine
+                // Hand the meeting walkie-talkie to the engine
                 meeting_service->SetEvent(&g_meetingListener);
                 
                 // Configure our join parameters
                 ZOOM_SDK_NAMESPACE::JoinParam joinParam;
-                joinParam.userType = ZOOM_SDK_NAMESPACE::ZOOM_USER_TYPE_APIUSER;
+                
+                // FIXED SPELLING:
+                joinParam.userType = ZOOM_SDK_NAMESPACE::ZoomUserType_APIUSER; 
                 
                 ZOOM_SDK_NAMESPACE::JoinParam4WithoutLogin& param = joinParam.param.withoutloginuserJoin;
                 param.meetingNumber = 7723013754ULL; // Your Meeting ID
@@ -59,45 +91,14 @@ virtual void onAuthenticationReturn(ZOOM_SDK_NAMESPACE::AuthResult ret) override
     virtual void onZoomIdentityExpired() override {}
     virtual void onZoomAuthIdentityExpired() override {}
 
-    // --- The sneaky Windows-only callback ---
 #if defined(WIN32)
     virtual void onNotificationServiceStatus(ZOOM_SDK_NAMESPACE::SDKNotificationServiceStatus status, ZOOM_SDK_NAMESPACE::SDKNotificationServiceError error) override {}
 #endif
 };
 
-// Create one global instance of our listener so it stays alive in the background
+// Create one global instance of our listener
 static ZoomAuthListener g_authListener;
 // ----------------------------------------------
-// --- THE ZOOM MEETING WALKIE-TALKIE ---
-class ZoomMeetingListener : public ZOOM_SDK_NAMESPACE::IMeetingServiceEvent {
-public:
-    virtual void onMeetingStatusChanged(ZOOM_SDK_NAMESPACE::MeetingStatus status, int iResult = 0) override {
-        // This will print the raw status number to your log as it changes!
-        blog(LOG_INFO, "[Zoom to OBS] MEETING STATUS CHANGED: Status Code %d (Result: %d)", status, iResult);
-        
-        if (status == ZOOM_SDK_NAMESPACE::MEETING_STATUS_INMEETING) {
-            blog(LOG_INFO, "[Zoom to OBS] SUCCESS! WE ARE OFFICIALLY IN THE MEETING!");
-        } else if (status == ZOOM_SDK_NAMESPACE::MEETING_STATUS_WAITINGFORHOST) {
-            blog(LOG_INFO, "[Zoom to OBS] We are in the Waiting Room...");
-        }
-    }
-
-    virtual void onMeetingStatisticsWarningNotification(ZOOM_SDK_NAMESPACE::StatisticsWarningType type) override {}
-    virtual void onMeetingParameterNotification(const ZOOM_SDK_NAMESPACE::MeetingParameter* meeting_param) override {}
-    virtual void onSuspendParticipantsActivities() override {}
-    virtual void onAICompanionActiveChangeNotice(bool bActive) override {}
-    virtual void onMeetingTopicChanged(const zchar_t* sTopic) override {}
-    virtual void onMeetingFullToWatchLiveStream(const zchar_t* sLiveStreamUrl) override {}
-    virtual void onUserNetworkStatusChanged(ZOOM_SDK_NAMESPACE::MeetingComponentType type, ZOOM_SDK_NAMESPACE::ConnectionQuality level, unsigned int userId, bool uplink) override {}
-
-#if defined(WIN32)
-    virtual void onAppSignalPanelUpdated(ZOOM_SDK_NAMESPACE::IMeetingAppSignalHandler* pHandler) override {}
-#endif
-};
-
-// Create one global instance of our meeting listener
-static ZoomMeetingListener g_meetingListener;
-// --------------------------------------
 // ----------------------------------------------------------------------------
 // THE INDEPENDENT ZOOM SOURCE CLASS
 // ----------------------------------------------------------------------------
