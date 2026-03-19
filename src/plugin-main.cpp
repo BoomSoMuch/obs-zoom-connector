@@ -159,8 +159,28 @@ bool obs_module_load(void) {
     
     ZOOM_SDK_NAMESPACE::SDKError err = ZOOM_SDK_NAMESPACE::InitSDK(initParam);
     
-    if (err == ZOOM_SDK_NAMESPACE::SDKERR_SUCCESS) {
+   if (err == ZOOM_SDK_NAMESPACE::SDKERR_SUCCESS) {
         blog(LOG_INFO, "[Zoom to OBS] SUCCESS: Zoom Meeting SDK Initialized!");
+        
+        // --- NEW: AUTHENTICATE THE ENGINE ---
+        ZOOM_SDK_NAMESPACE::IAuthService* auth_service = nullptr;
+        err = ZOOM_SDK_NAMESPACE::CreateAuthService(&auth_service);
+        
+        if (err == ZOOM_SDK_NAMESPACE::SDKERR_SUCCESS && auth_service) {
+            ZOOM_SDK_NAMESPACE::AuthContext authContext;
+            
+            // PASTE YOUR JWT TOKEN HERE:
+            authContext.jwt_token = L"eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJhcHBLZXkiOiJZNzNqelFSbVF4aWhoNFo3MnFSMnRnIiwiaWF0IjoxNzczOTAwMDAwLCJleHAiOjE3NzM5ODY0MDAsInRva2VuRXhwIjoxNzczOTg2NDAwfQ.R91nzB0y6ALagBGcz3UL48LEqXb2qnPfJ7id0zNd45A"; 
+            
+            err = auth_service->SDKAuth(authContext);
+            if (err == ZOOM_SDK_NAMESPACE::SDKERR_SUCCESS) {
+                blog(LOG_INFO, "[Zoom to OBS] SUCCESS: Auth request sent to Zoom!");
+            } else {
+                blog(LOG_ERROR, "[Zoom to OBS] ERROR: Auth request failed. Error: %d", err);
+            }
+        }
+        // ------------------------------------
+
     } else {
         blog(LOG_ERROR, "[Zoom to OBS] ERROR: Zoom Meeting SDK failed to initialize. Error Code: %d", err);
     }
