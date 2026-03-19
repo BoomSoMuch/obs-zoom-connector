@@ -15,6 +15,9 @@
 !CMakePresets.json
 !LICENSE
 !README.md
+!/zoom-sdk/
+!/zoom-sdk/**/*.lib
+!/zoom-sdk/**/*.h
 
 # Exclude lock files
 *.lock.json
