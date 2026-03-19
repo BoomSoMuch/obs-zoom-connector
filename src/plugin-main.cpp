@@ -7,15 +7,23 @@ extern "C" {
 #include <ixwebsocket/IXWebSocket.h>
 #include <string>
 #include <windows.h>
+
+// 1. Master Dictionaries FIRST
+#include "zoom_sdk_def.h"
+#include "zoom_sdk_raw_data_def.h"
+
+// 2. Core Engine NEXT
 #include "zoom_sdk.h"
 #include "auth_service_interface.h"
 #include "meeting_service_interface.h"
 
-// --- ADDED THE FOLDER PATHS HERE ---
-#include "rawdata/rawdata_renderer_interface.h"
-#include "zoom_sdk_raw_data_def.h" // (This one is in the main folder)
-#include "rawdata/zoom_rawdata_api.h"
+// 3. Meeting Components NEXT (Audio before Participants!)
+#include "meeting_service_components/meeting_audio_ctrl_interface.h"
 #include "meeting_service_components/meeting_participants_ctrl_interface.h"
+
+// 4. Raw Data LAST
+#include "rawdata/rawdata_renderer_interface.h"
+#include "rawdata/zoom_rawdata_api.h"
 
 // --- 3. THE ZOOM VIDEO CATCHER ---
 class ZoomVideoCatcher : public ZOOM_SDK_NAMESPACE::IZoomSDKRendererDelegate {
