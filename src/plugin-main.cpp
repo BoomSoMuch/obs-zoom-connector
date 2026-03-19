@@ -10,16 +10,92 @@ extern "C" {
 #include "zoom_sdk.h"
 #include "auth_service_interface.h"
 #include "meeting_service_interface.h"
+#include "rawdata_renderer_interface.h"
+#include "zoom_sdk_raw_data_def.h"
+#include "zoom_rawdata_api.h"
+#include "meeting_service_components/meeting_participants_ctrl_interface.h"
 
+// --- 3. THE ZOOM VIDEO CATCHER ---
+class ZoomVideoCatcher : public ZOOM_SDK_NAMESPACE::IZoomSDKRendererDelegate {
+public:
+    virtual void onRawDataFrameReceived(ZOOM_SDK_NAMESPACE::YUVRawDataI420* data) override {
+        // Extract the exact dimensions using the dictionary we just checked!
+        unsigned int width = data->GetStreamWidth();
+        unsigned int height = data->GetStreamHeight();
+        
+        // Throttle the log so we don't spam OBS to death
+        static int frameCount = 0;
+        if (frameCount % 300 == 0) { 
+            blog(LOG_INFO, "[Zoom to OBS] CATCHER ALERT: Received Video Frame! Resolution: %dx%d", width, height);
+        }
+        frameCount++;
+        
+        // Note: In the very next step, we will grab GetYBuffer() and hand it directly to the OBS canvas here!
+    }
+
+    virtual void onRawDataStatusChanged(RawDataStatus status) override {
+        blog(LOG_INFO, "[Zoom to OBS] Video Raw Data Status Changed: %d", status);
+    }
+
+    virtual void onRendererBeDestroyed() override {
+        blog(LOG_INFO, "[Zoom to OBS] Video Renderer Destroyed.");
+    }
+};
+
+// Create one global instance of our catcher
+static ZoomVideoCatcher g_videoCatcher;
+
+// Create a global pointer to hold the pipeline open
+static ZOOM_SDK_NAMESPACE::IZoomSDKRenderer* g_videoRenderer = nullptr;
+// ---------------------------------
+
+// ---------------------------------
 
 // --- 1. THE ZOOM MEETING WALKIE-TALKIE (Must go first!) ---
 class ZoomMeetingListener : public ZOOM_SDK_NAMESPACE::IMeetingServiceEvent {
 public:
-    virtual void onMeetingStatusChanged(ZOOM_SDK_NAMESPACE::MeetingStatus status, int iResult = 0) override {
+virtual void onMeetingStatusChanged(ZOOM_SDK_NAMESPACE::MeetingStatus status, int iResult = 0) override {
         blog(LOG_INFO, "[Zoom to OBS] MEETING STATUS CHANGED: Status Code %d (Result: %d)", status, iResult);
         
         if (status == ZOOM_SDK_NAMESPACE::MEETING_STATUS_INMEETING) {
             blog(LOG_INFO, "[Zoom to OBS] SUCCESS! WE ARE OFFICIALLY IN THE MEETING!");
+            
+            // --- PHASE 3: CREATE THE VIDEO PIPELINE ---
+            ZOOM_SDK_NAMESPACE::SDKError err = ZOOM_SDK_NAMESPACE::createRenderer(&g_videoRenderer, &g_videoCatcher);
+            
+            if (err == ZOOM_SDK_NAMESPACE::SDKERR_SUCCESS && g_videoRenderer) {
+                // Set our desired resolution
+                g_videoRenderer->setRawDataResolution(ZOOM_SDK_NAMESPACE::ZoomSDKResolution_720P);
+                
+                // Ask Zoom for the list of people in the room
+                ZOOM_SDK_NAMESPACE::IMeetingService* meeting_service = nullptr;
+                ZOOM_SDK_NAMESPACE::CreateMeetingService(&meeting_service);
+                
+                if (meeting_service) {
+                    ZOOM_SDK_NAMESPACE::IMeetingParticipantsController* part_ctrl = meeting_service->GetMeetingParticipantsController();
+                    if (part_ctrl) {
+                        ZOOM_SDK_NAMESPACE::IList<unsigned int>* userList = part_ctrl->GetParticipantsList();
+                        
+                        if (userList && userList->GetCount() > 0) {
+                            // Grab the User ID of the very first person in the room
+                            unsigned int target_user_id = userList->GetItem(0);
+                            
+                            // Attach the video catcher to that specific person!
+                            err = g_videoRenderer->subscribe(target_user_id, ZOOM_SDK_NAMESPACE::RAW_DATA_TYPE_VIDEO);
+                            
+                            if (err == ZOOM_SDK_NAMESPACE::SDKERR_SUCCESS) {
+                                blog(LOG_INFO, "[Zoom to OBS] SUCCESS: Video Catcher attached to User ID %u!", target_user_id);
+                            } else {
+                                blog(LOG_ERROR, "[Zoom to OBS] ERROR: Failed to subscribe. Code: %d", err);
+                            }
+                        }
+                    }
+                }
+            } else {
+                blog(LOG_ERROR, "[Zoom to OBS] ERROR: Failed to create video renderer. Code: %d", err);
+            }
+            // -----------------------------------------
+            
         } else if (status == ZOOM_SDK_NAMESPACE::MEETING_STATUS_WAITINGFORHOST) {
             blog(LOG_INFO, "[Zoom to OBS] We are in the Waiting Room...");
         }
