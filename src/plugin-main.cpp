@@ -10,6 +10,29 @@ extern "C" {
 #include "zoom_sdk.h"
 #include "auth_service_interface.h"
 
+// --- THE ZOOM WALKIE-TALKIE (AUTH LISTENER) ---
+class ZoomAuthListener : public ZOOM_SDK_NAMESPACE::IAuthServiceEvent {
+public:
+    // This is the specific radio channel Zoom uses to reply to our JWT token
+    virtual void onAuthenticationReturn(ZOOM_SDK_NAMESPACE::AuthResult ret) override {
+        if (ret == ZOOM_SDK_NAMESPACE::AUTHRET_SUCCESS) {
+            blog(LOG_INFO, "[Zoom to OBS] RADIO MESSAGE: SUCCESS! Zoom Engine is fully logged in and ready!");
+        } else {
+            blog(LOG_ERROR, "[Zoom to OBS] RADIO MESSAGE: ERROR! Zoom rejected our token. Error Code: %d", ret);
+        }
+    }
+
+    // Zoom requires us to hold these other channels open, even if we don't use them yet
+    virtual void onLoginReturnWithReason(ZOOM_SDK_NAMESPACE::LOGINSTATUS ret, ZOOM_SDK_NAMESPACE::IAccountInfo* pAccountInfo, ZOOM_SDK_NAMESPACE::LoginFailReason reason) override {}
+    virtual void onLogout() override {}
+    virtual void onZoomIdentityExpired() override {}
+    virtual void onZoomAuthIdentityExpired() override {}
+};
+
+// Create one global instance of our listener so it stays alive in the background
+static ZoomAuthListener g_authListener;
+// ----------------------------------------------
+
 // ----------------------------------------------------------------------------
 // THE INDEPENDENT ZOOM SOURCE CLASS
 // ----------------------------------------------------------------------------
