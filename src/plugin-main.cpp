@@ -13,8 +13,7 @@ extern "C" {
 // --- THE ZOOM WALKIE-TALKIE (AUTH LISTENER) ---
 class ZoomAuthListener : public ZOOM_SDK_NAMESPACE::IAuthServiceEvent {
 public:
-    // The main callback we care about
-    virtual void onAuthenticationReturn(ZOOM_SDK_NAMESPACE::AuthResult ret) {
+    virtual void onAuthenticationReturn(ZOOM_SDK_NAMESPACE::AuthResult ret) override {
         if (ret == ZOOM_SDK_NAMESPACE::AUTHRET_SUCCESS) {
             blog(LOG_INFO, "[Zoom to OBS] RADIO MESSAGE: SUCCESS! Zoom Engine is fully logged in and ready!");
         } else {
@@ -22,17 +21,15 @@ public:
         }
     }
 
-    // --- CATCH-ALL FOR CHANGING ZOOM SDK VERSIONS ---
-    // By providing both legacy and modern signatures without the 'override' keyword, 
-    // the compiler will seamlessly satisfy the blueprint for any SDK version.
-    
-    virtual void onLoginRet(ZOOM_SDK_NAMESPACE::LOGINSTATUS ret, ZOOM_SDK_NAMESPACE::IAccountInfo* pAccountInfo) {}
-    
-    virtual void onLoginReturnWithReason(ZOOM_SDK_NAMESPACE::LOGINSTATUS ret, ZOOM_SDK_NAMESPACE::IAccountInfo* pAccountInfo, ZOOM_SDK_NAMESPACE::LoginFailReason reason) {}
-    
-    virtual void onLogout() {}
-    virtual void onZoomIdentityExpired() {}
-    virtual void onZoomAuthIdentityExpired() {}
+    virtual void onLoginReturnWithReason(ZOOM_SDK_NAMESPACE::LOGINSTATUS ret, ZOOM_SDK_NAMESPACE::IAccountInfo* pAccountInfo, ZOOM_SDK_NAMESPACE::LoginFailReason reason) override {}
+    virtual void onLogout() override {}
+    virtual void onZoomIdentityExpired() override {}
+    virtual void onZoomAuthIdentityExpired() override {}
+
+    // --- The sneaky Windows-only callback ---
+#if defined(WIN32)
+    virtual void onNotificationServiceStatus(ZOOM_SDK_NAMESPACE::SDKNotificationServiceStatus status, ZOOM_SDK_NAMESPACE::SDKNotificationServiceError error) override {}
+#endif
 };
 
 // Create one global instance of our listener so it stays alive in the background
