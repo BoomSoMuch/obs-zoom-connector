@@ -8,6 +8,7 @@ extern "C" {
 #include <string>
 #include <windows.h>
 #include "zoom_sdk.h"
+#include "auth_service_interface.h"
 
 // ----------------------------------------------------------------------------
 // THE INDEPENDENT ZOOM SOURCE CLASS
