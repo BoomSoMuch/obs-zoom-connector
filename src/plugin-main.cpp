@@ -61,7 +61,7 @@ public:
                 ZOOM_SDK_NAMESPACE::JoinParam joinParam;
                 
                 // FIXED SPELLING:
-                joinParam.userType = ZOOM_SDK_NAMESPACE::ZoomUserType_APIUSER; 
+                joinParam.userType = ZOOM_SDK_NAMESPACE::SDK_UT_WITHOUT_LOGIN; 
                 
                 ZOOM_SDK_NAMESPACE::JoinParam4WithoutLogin& param = joinParam.param.withoutloginuserJoin;
                 param.meetingNumber = 7723013754ULL; // Your Meeting ID
