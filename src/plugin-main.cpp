@@ -9,6 +9,8 @@ extern "C" {
 #include <windows.h>
 #include "zoom_sdk.h"
 #include "auth_service_interface.h"
+#include "meeting_service_interface.h"
+
 
 // --- THE ZOOM WALKIE-TALKIE (AUTH LISTENER) ---
 class ZoomAuthListener : public ZOOM_SDK_NAMESPACE::IAuthServiceEvent {
