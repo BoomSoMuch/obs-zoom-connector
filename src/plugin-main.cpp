@@ -49,7 +49,7 @@ public:
         if (ret == ZOOM_SDK_NAMESPACE::AUTHRET_SUCCESS) {
             blog(LOG_INFO, "[Zoom to OBS] RADIO MESSAGE: SUCCESS! Zoom Engine is fully logged in and ready!");
             
-            // --- PHASE 2: JOIN THE MEETING ---
+            // --- PHASE 2: START THE MEETING AS HOST ---
             ZOOM_SDK_NAMESPACE::IMeetingService* meeting_service = nullptr;
             ZOOM_SDK_NAMESPACE::CreateMeetingService(&meeting_service);
             
@@ -57,26 +57,28 @@ public:
                 // Hand the meeting walkie-talkie to the engine
                 meeting_service->SetEvent(&g_meetingListener);
                 
-                // Configure our join parameters
-                ZOOM_SDK_NAMESPACE::JoinParam joinParam;
+                // Configure our START parameters
+                ZOOM_SDK_NAMESPACE::StartParam startParam;
+                startParam.userType = ZOOM_SDK_NAMESPACE::SDK_UT_WITHOUT_LOGIN;
                 
-                // FIXED SPELLING:
-                joinParam.userType = ZOOM_SDK_NAMESPACE::SDK_UT_WITHOUT_LOGIN; 
-                
-                ZOOM_SDK_NAMESPACE::JoinParam4WithoutLogin& param = joinParam.param.withoutloginuserJoin;
+                ZOOM_SDK_NAMESPACE::StartParam4WithoutLogin& param = startParam.param.withoutloginStart;
                 param.meetingNumber = 7723013754ULL; // Your Meeting ID
                 param.userName = L"OBS Camera Bot";
-                param.psw = L""; // No Passcode
+                param.zoomuserType = ZOOM_SDK_NAMESPACE::ZoomUserType_APIUSER;
+                
+                // YOUR DIGITAL KEY (ZAK) GOES HERE:
+                param.userZAK = L"eyJ0eXAiOiJKV1QiLCJzdiI6IjAwMDAwMiIsInptX3NrbSI6InptX28ybSIsImFsZyI6IkhTMjU2In0.eyJhdWQiOiJjbGllbnRzbSIsInVpZCI6IllwTWtZd2NJUUNhZlppcFNwVWFLSGciLCJ6aWQiOiIyOTYyMDRhZDc5NjQ0ODU4YTU0MGE2Y2M0ZWJmZWY2ZSIsImlzcyI6IndlYiIsInNrIjoiNDE1OTAzMzIwMzM5NjM3ODgyNSIsInN0eSI6MTAwLCJ3Y2QiOiJhdzEiLCJjbHQiOjAsImV4cCI6MTc3Mzk2NTMyOSwiaWF0IjoxNzczOTU4MTI5LCJhaWQiOiIxYks4NEJzS1FXaWMzUWJqYWtqR2xnIiwiY2lkIjoiIn0.hYGt-9nYzLhEQjYnDsZ9IUBROmi2O_FrEkev4eQf0Ic"; 
                 
                 // Keep the bot's mic and camera off by default
                 param.isAudioOff = true;
                 param.isVideoOff = true;
 
-                ZOOM_SDK_NAMESPACE::SDKError err = meeting_service->Join(joinParam);
+                // Fire the START command instead of JOIN
+                ZOOM_SDK_NAMESPACE::SDKError err = meeting_service->Start(startParam);
                 if (err == ZOOM_SDK_NAMESPACE::SDKERR_SUCCESS) {
-                    blog(LOG_INFO, "[Zoom to OBS] Join command successfully sent to engine!");
+                    blog(LOG_INFO, "[Zoom to OBS] Start command successfully sent to engine!");
                 } else {
-                    blog(LOG_ERROR, "[Zoom to OBS] ERROR: Failed to send join command. Code: %d", err);
+                    blog(LOG_ERROR, "[Zoom to OBS] ERROR: Failed to send start command. Code: %d", err);
                 }
             }
             // ---------------------------------
@@ -99,6 +101,7 @@ public:
 // Create one global instance of our listener
 static ZoomAuthListener g_authListener;
 // ----------------------------------------------
+
 // ----------------------------------------------------------------------------
 // THE INDEPENDENT ZOOM SOURCE CLASS
 // ----------------------------------------------------------------------------
