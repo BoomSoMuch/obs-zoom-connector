@@ -6,6 +6,8 @@ extern "C" {
 #include <util/platform.h>
 #include <ixwebsocket/IXWebSocket.h>
 #include <string>
+#include <windows.h>
+#include "zoom_sdk.h"
 
 // ----------------------------------------------------------------------------
 // THE INDEPENDENT ZOOM SOURCE CLASS
