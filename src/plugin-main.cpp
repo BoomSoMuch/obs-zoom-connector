@@ -10,9 +10,11 @@ extern "C" {
 #include "zoom_sdk.h"
 #include "auth_service_interface.h"
 #include "meeting_service_interface.h"
-#include "rawdata_renderer_interface.h"
-#include "zoom_sdk_raw_data_def.h"
-#include "zoom_rawdata_api.h"
+
+// --- ADDED THE FOLDER PATHS HERE ---
+#include "rawdata/rawdata_renderer_interface.h"
+#include "zoom_sdk_raw_data_def.h" // (This one is in the main folder)
+#include "rawdata/zoom_rawdata_api.h"
 #include "meeting_service_components/meeting_participants_ctrl_interface.h"
 
 // --- 3. THE ZOOM VIDEO CATCHER ---
