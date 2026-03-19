@@ -20,7 +20,8 @@ extern "C" {
 // --- 3. THE ZOOM VIDEO CATCHER ---
 class ZoomVideoCatcher : public ZOOM_SDK_NAMESPACE::IZoomSDKRendererDelegate {
 public:
-    virtual void onRawDataFrameReceived(ZOOM_SDK_NAMESPACE::YUVRawDataI420* data) override {
+    // FIX: Removed the ZOOM_SDK_NAMESPACE:: prefix from YUVRawDataI420
+    virtual void onRawDataFrameReceived(YUVRawDataI420* data) override {
         // Extract the exact dimensions using the dictionary we just checked!
         unsigned int width = data->GetStreamWidth();
         unsigned int height = data->GetStreamHeight();
@@ -31,8 +32,6 @@ public:
             blog(LOG_INFO, "[Zoom to OBS] CATCHER ALERT: Received Video Frame! Resolution: %dx%d", width, height);
         }
         frameCount++;
-        
-        // Note: In the very next step, we will grab GetYBuffer() and hand it directly to the OBS canvas here!
     }
 
     virtual void onRawDataStatusChanged(RawDataStatus status) override {
