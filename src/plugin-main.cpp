@@ -57,7 +57,6 @@ public:
                                     obs_frame.color_range_min, 
                                     obs_frame.color_range_max);
         
-        // --- ZERO-LATENCY HARDWARE CLOCK ---
         obs_frame.timestamp = data->GetTimeStamp() * 1000000ULL;
         
         obs_source_output_video(g_participantSource, &obs_frame);
@@ -104,7 +103,11 @@ public:
                         blog(LOG_INFO, "[ISO for OBS] Video Catcher attached to User ID %u! Subscribe result: %d", target_user_id, err);
                     }
                 }
+            } else {
+                blog(LOG_ERROR, "[ISO for OBS] ERROR: Failed to create renderer. Code: %d", err);
             }
+        } else {
+            blog(LOG_ERROR, "[ISO for OBS] ERROR: Failed to start raw recording. Code: %d", rec_err);
         }
     }
 
@@ -133,6 +136,8 @@ static ZoomRecordingListener g_recordingListener;
 class ZoomMeetingListener : public ZOOM_SDK_NAMESPACE::IMeetingServiceEvent {
 public:
     virtual void onMeetingStatusChanged(ZOOM_SDK_NAMESPACE::MeetingStatus status, int iResult = 0) override {
+        blog(LOG_INFO, "[ISO for OBS] MEETING STATUS CHANGED: Status Code %d (Result: %d)", status, iResult);
+        
         if (status == ZOOM_SDK_NAMESPACE::MEETING_STATUS_INMEETING) {
             blog(LOG_INFO, "[ISO for OBS] SUCCESS! WE ARE OFFICIALLY IN THE MEETING!");
             
@@ -165,7 +170,11 @@ static ZoomMeetingListener g_meetingListener;
 class ZoomAuthListener : public ZOOM_SDK_NAMESPACE::IAuthServiceEvent {
 public:
     virtual void onAuthenticationReturn(ZOOM_SDK_NAMESPACE::AuthResult ret) override {
+        blog(LOG_INFO, "[ISO for OBS] RADIO MESSAGE: Auth Return Status: %d", ret);
+        
         if (ret == ZOOM_SDK_NAMESPACE::AUTHRET_SUCCESS) {
+            blog(LOG_INFO, "[ISO for OBS] SUCCESS! Zoom Engine is fully logged in and ready!");
+            
             ZOOM_SDK_NAMESPACE::IMeetingService* meeting_service = nullptr;
             ZOOM_SDK_NAMESPACE::CreateMeetingService(&meeting_service);
             
@@ -182,8 +191,11 @@ public:
                 param.isAudioOff = true;
                 param.isVideoOff = true;
 
-                meeting_service->Join(joinParam);
+                ZOOM_SDK_NAMESPACE::SDKError err = meeting_service->Join(joinParam);
+                blog(LOG_INFO, "[ISO for OBS] Join command sent. Status: %d", err);
             }
+        } else {
+            blog(LOG_ERROR, "[ISO for OBS] ERROR: Zoom rejected our JWT. Error Code: %d", ret);
         }
     }
     virtual void onLoginReturnWithReason(ZOOM_SDK_NAMESPACE::LOGINSTATUS ret, ZOOM_SDK_NAMESPACE::IAccountInfo* pAccountInfo, ZOOM_SDK_NAMESPACE::LoginFailReason reason) override {}
@@ -287,6 +299,7 @@ bool obs_module_load(void) {
     initParam.strWebDomain = L"https://zoom.us";
     
     ZOOM_SDK_NAMESPACE::SDKError err = ZOOM_SDK_NAMESPACE::InitSDK(initParam);
+    blog(LOG_INFO, "[ISO for OBS] INIT SDK STATUS: %d", err);
     
    if (err == ZOOM_SDK_NAMESPACE::SDKERR_SUCCESS) {
         ZOOM_SDK_NAMESPACE::IAuthService* auth_service = nullptr;
@@ -296,10 +309,12 @@ bool obs_module_load(void) {
             auth_service->SetEvent(&g_authListener);
             ZOOM_SDK_NAMESPACE::AuthContext authContext;
             
-            // PUT YOUR JWT HERE
-            authContext.jwt_token = L"eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJhcHBLZXkiOiJZNzNqelFSbVF4aWhoNFo3MnFSMnRnIiwiaWF0IjoxNzczOTAwMDAwLCJleHAiOjE3NzM5ODY0MDAsInRva2VuRXhwIjoxNzczOTg2NDAwfQ.R91nzB0y6ALagBGcz3UL48LEqXb2qnPfJ7id0zNd45A"; 
+            // --- GENERATE A NEW JWT AND PASTE IT HERE ---
+            authContext.jwt_token = L"eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJhcHBLZXkiOiJzWUlqWGpqelFkMmJOQ2dYMXZKWU1BIiwiaWF0IjoxNzEwODYwMDAwLCJleHAiOjE3MTE0NjQ4MDAsInRva2VuRXhwIjoxNzExNDY0ODAwfQ.PwVVrG2xkj2_LtWhFoeqF3EV7tEy9ERWMzQwmDKKVWE"; 
+            // --------------------------------------------
             
-            auth_service->SDKAuth(authContext);
+            ZOOM_SDK_NAMESPACE::SDKError auth_err = auth_service->SDKAuth(authContext);
+            blog(LOG_INFO, "[ISO for OBS] SDK AUTH REQUEST SENT. STATUS: %d", auth_err);
         }
     }
     return true;
