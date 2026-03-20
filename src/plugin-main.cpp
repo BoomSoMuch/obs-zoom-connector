@@ -103,16 +103,25 @@ public:
         }
     }
 
-    // Required overrides to keep the compiler happy
+    // Required overrides (Mathematically verified against your specific dictionary)
     virtual void onRecordingStatus(ZOOM_SDK_NAMESPACE::RecordingStatus status) override {}
     virtual void onCloudRecordingStatus(ZOOM_SDK_NAMESPACE::RecordingStatus status) override {}
     virtual void onLocalRecordingPrivilegeRequestStatus(ZOOM_SDK_NAMESPACE::RequestLocalRecordingStatus status) override {}
+    virtual void onRequestCloudRecordingResponse(ZOOM_SDK_NAMESPACE::RequestStartCloudRecordingStatus status) override {}
     virtual void onLocalRecordingPrivilegeRequested(ZOOM_SDK_NAMESPACE::IRequestLocalRecordingPrivilegeHandler* handler) override {}
+    virtual void onStartCloudRecordingRequested(ZOOM_SDK_NAMESPACE::IRequestStartCloudRecordingHandler* handler) override {}
     virtual void onCloudRecordingStorageFull(time_t gracePeriodDate) override {}
-    virtual void onEnableAndStartSmartRecordingRequested(ZOOM_SDK_NAMESPACE::IRequestStartSmartRecordingHandler* handler) override {}
-    virtual void onSmartRecordingEnableActionCallback(ZOOM_SDK_NAMESPACE::RequestStartSmartRecordingStatus status) override {}
+    virtual void onEnableAndStartSmartRecordingRequested(ZOOM_SDK_NAMESPACE::IRequestEnableAndStartSmartRecordingHandler* handler) override {}
+    virtual void onSmartRecordingEnableActionCallback(ZOOM_SDK_NAMESPACE::ISmartRecordingEnableActionHandler* handler) override {}
+
 #if defined(WIN32)
+    virtual void onRecording2MP4Done(bool bsuccess, int iResult, const zchar_t* szPath) override {}
+    virtual void onRecording2MP4Processing(int iPercentage) override {}
     virtual void onCustomizedLocalRecordingSourceNotification(ZOOM_SDK_NAMESPACE::ICustomizedLocalRecordingLayoutHelper* layout_helper) override {}
+#endif
+
+#if defined(__linux__)
+    virtual void onTranscodingStatusChanged(ZOOM_SDK_NAMESPACE::TranscodingStatus status, const zchar_t* path) override {}
 #endif
 };
 
