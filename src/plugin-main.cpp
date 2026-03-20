@@ -24,7 +24,6 @@
 // --- THE OBS VISUAL TARGET ---
 // This holds the physical OBS source on your screen so the catcher can paint to it
 static obs_source_t* g_participantSource = nullptr;
-static uint64_t g_next_timestamp = 0;
 
 
 // --- 3. THE ZOOM VIDEO CATCHER ---
@@ -34,6 +33,7 @@ public:
         unsigned int width = data->GetStreamWidth();
         unsigned int height = data->GetStreamHeight();
         
+        // Throttle the log so we don't spam OBS to death
         static int frameCount = 0;
         if (frameCount % 300 == 0) { 
             blog(LOG_INFO, "[Zoom to OBS] CATCHER ALERT: Painting Video Frame! Resolution: %dx%d", width, height);
@@ -64,6 +64,20 @@ public:
                                     obs_frame.color_matrix, 
                                     obs_frame.color_range_min, 
                                     obs_frame.color_range_max);
+        
+        // --- THE ZERO-LATENCY FIX ---
+        // Zoom gives us the hardware capture time in milliseconds.
+        // OBS requires nanoseconds, so we multiply by 1,000,000.
+        // No more fake clocks. No more traffic jams.
+        obs_frame.timestamp = data->GetTimeStamp() * 1000000ULL;
+        
+        // PAINT IT TO THE OBS SCREEN!
+        obs_source_output_video(g_participantSource, &obs_frame);
+    }
+
+    virtual void onRawDataStatusChanged(RawDataStatus status) override {}
+    virtual void onRendererBeDestroyed() override {}
+};
         
         // Keep the clock ticking for smooth playback
         uint64_t now = os_gettime_ns();
