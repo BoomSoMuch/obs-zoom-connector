@@ -28,6 +28,8 @@ static obs_source_t* g_participantSource = nullptr;
 class ZoomVideoCatcher : public ZOOM_SDK_NAMESPACE::IZoomSDKRendererDelegate {
 public:
     virtual void onRawDataFrameReceived(YUVRawDataI420* data) override {
+        if (!g_participantSource) return;
+
         unsigned int width = data->GetStreamWidth();
         unsigned int height = data->GetStreamHeight();
         
@@ -36,8 +38,6 @@ public:
             blog(LOG_INFO, "[ISO for OBS] CATCHER ALERT: Painting Video Frame! Resolution: %dx%d", width, height);
         }
         frameCount++;
-
-        if (!g_participantSource) return;
 
         struct obs_source_frame obs_frame = {};
         obs_frame.format = VIDEO_FORMAT_I420; 
@@ -57,7 +57,7 @@ public:
                                     obs_frame.color_range_min, 
                                     obs_frame.color_range_max);
         
-        // --- ZERO-LATENCY HARDWARE CLOCK ---
+        // ZERO-LATENCY HARDWARE CLOCK
         obs_frame.timestamp = data->GetTimeStamp() * 1000000ULL;
         
         obs_source_output_video(g_participantSource, &obs_frame);
@@ -76,7 +76,7 @@ class ZoomRecordingListener : public ZOOM_SDK_NAMESPACE::IMeetingRecordingCtrlEv
 public:
     virtual void onRecordPrivilegeChanged(bool bCanRec) override {
         if (bCanRec) {
-            blog(LOG_INFO, "[ISO for OBS] BOOM! Host granted recording permission!");
+            blog(LOG_INFO, "[ISO for OBS] Host granted recording permission!");
             
             ZOOM_SDK_NAMESPACE::IMeetingService* meeting_service = nullptr;
             ZOOM_SDK_NAMESPACE::CreateMeetingService(&meeting_service);
@@ -167,43 +167,4 @@ class ZoomAuthListener : public ZOOM_SDK_NAMESPACE::IAuthServiceEvent {
 public:
     virtual void onAuthenticationReturn(ZOOM_SDK_NAMESPACE::AuthResult ret) override {
         if (ret == ZOOM_SDK_NAMESPACE::AUTHRET_SUCCESS) {
-            ZOOM_SDK_NAMESPACE::IMeetingService* meeting_service = nullptr;
-            ZOOM_SDK_NAMESPACE::CreateMeetingService(&meeting_service);
-            
-            if (meeting_service) {
-                meeting_service->SetEvent(&g_meetingListener);
-                
-                ZOOM_SDK_NAMESPACE::JoinParam joinParam;
-                joinParam.userType = ZOOM_SDK_NAMESPACE::SDK_UT_WITHOUT_LOGIN;
-                
-                ZOOM_SDK_NAMESPACE::JoinParam4WithoutLogin& param = joinParam.param.withoutloginuserJoin;
-                param.meetingNumber = 7723013754ULL; // Your Meeting ID
-                param.userName = L"OBS Camera Bot";
-                param.psw = L""; 
-                param.isAudioOff = true;
-                param.isVideoOff = true;
-
-                meeting_service->Join(joinParam);
-            }
-        }
-    }
-    virtual void onLoginReturnWithReason(ZOOM_SDK_NAMESPACE::LOGINSTATUS ret, ZOOM_SDK_NAMESPACE::IAccountInfo* pAccountInfo, ZOOM_SDK_NAMESPACE::LoginFailReason reason) override {}
-    virtual void onLogout() override {}
-    virtual void onZoomIdentityExpired() override {}
-    virtual void onZoomAuthIdentityExpired() override {}
-#if defined(WIN32)
-    virtual void onNotificationServiceStatus(ZOOM_SDK_NAMESPACE::SDKNotificationServiceStatus status, ZOOM_SDK_NAMESPACE::SDKNotificationServiceError error) override {}
-#endif
-};
-static ZoomAuthListener g_authListener;
-
-
-// ----------------------------------------------------------------------------
-// THE GUTTED OBS SOURCE CLASS (No FFmpeg!)
-// ----------------------------------------------------------------------------
-class ZoomSource {
-public:
-    obs_source_t* source;
-    std::string source_type;
-
-    ZoomSource(obs_source_t* src, const std::string& source_type_name) {
+            ZOOM_SDK_NAMESPACE::IMeetingService* meeting_service =
