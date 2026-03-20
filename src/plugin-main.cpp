@@ -17,7 +17,8 @@ extern "C" {
 #include "auth_service_interface.h"
 #include "meeting_service_interface.h"
 
-// 3. Meeting Components (Safe to add now!)
+// 3. Meeting Components (AUDIO MUST GO BEFORE PARTICIPANTS!)
+#include "meeting_service_components/meeting_audio_interface.h"
 #include "meeting_service_components/meeting_participants_ctrl_interface.h"
 
 // 4. Raw Data LAST
