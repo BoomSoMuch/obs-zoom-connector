@@ -132,33 +132,52 @@ class ZoomAuthListener : public ZOOM_SDK_NAMESPACE::IAuthServiceEvent {
 public:
     virtual void onAuthenticationReturn(ZOOM_SDK_NAMESPACE::AuthResult ret) override {
         if (ret == ZOOM_SDK_NAMESPACE::AUTHRET_SUCCESS) {
-            blog(LOG_INFO, "[Zoom to OBS] RADIO MESSAGE: SUCCESS! Zoom Engine is fully logged in and ready!");
+            blog(LOG_INFO, "[Zoom to OBS] SUCCESS! App is Authenticated. Now logging in as David...");
             
-            // --- PHASE 2: START THE MEETING AS HOST ---
+            ZOOM_SDK_NAMESPACE::IAuthService* auth_service = nullptr;
+            ZOOM_SDK_NAMESPACE::CreateAuthService(&auth_service);
+            if (auth_service) {
+                // --- PHASE 2A: LOG IN WITH EMAIL & PASSWORD ---
+                ZOOM_SDK_NAMESPACE::LoginParam loginParam;
+                loginParam.loginType = ZOOM_SDK_NAMESPACE::LoginType_Email;
+                loginParam.ut.emailLoginAndSignup.userName = L"YOUR_EMAIL_HERE@DOMAIN.COM"; // <-- PUT YOUR EMAIL HERE
+                loginParam.ut.emailLoginAndSignup.password = L"YOUR_PASSWORD_HERE";       // <-- PUT YOUR PASSWORD HERE
+                loginParam.ut.emailLoginAndSignup.bRememberMe = true;
+                
+                ZOOM_SDK_NAMESPACE::SDKError err = auth_service->Login(loginParam);
+                if (err != ZOOM_SDK_NAMESPACE::SDKERR_SUCCESS) {
+                    blog(LOG_ERROR, "[Zoom to OBS] ERROR: Failed to send login command. Code: %d", err);
+                }
+            }
+        } else {
+            blog(LOG_ERROR, "[Zoom to OBS] RADIO MESSAGE: ERROR! Zoom rejected our JWT. Code: %d", ret);
+        }
+    }
+
+    virtual void onLoginReturnWithReason(ZOOM_SDK_NAMESPACE::LOGINSTATUS ret, ZOOM_SDK_NAMESPACE::IAccountInfo* pAccountInfo, ZOOM_SDK_NAMESPACE::LoginFailReason reason) override {
+        blog(LOG_INFO, "[Zoom to OBS] LOGIN STATUS: %d (Reason Code: %d)", ret, reason);
+        
+        if (ret == ZOOM_SDK_NAMESPACE::LOGIN_SUCCESS) {
+            blog(LOG_INFO, "[Zoom to OBS] SUCCESS! Logged in securely. Starting the meeting as Host...");
+            
+            // --- PHASE 2B: START THE MEETING AS A REAL LOGGED-IN USER ---
             ZOOM_SDK_NAMESPACE::IMeetingService* meeting_service = nullptr;
             ZOOM_SDK_NAMESPACE::CreateMeetingService(&meeting_service);
             
             if (meeting_service) {
-                // Hand the meeting walkie-talkie to the engine
                 meeting_service->SetEvent(&g_meetingListener);
                 
-                // Configure our START parameters
                 ZOOM_SDK_NAMESPACE::StartParam startParam;
-                startParam.userType = ZOOM_SDK_NAMESPACE::SDK_UT_WITHOUT_LOGIN;
+                // Notice we changed this from WITHOUT_LOGIN to NORMALUSER
+                startParam.userType = ZOOM_SDK_NAMESPACE::SDK_UT_NORMALUSER; 
                 
-                ZOOM_SDK_NAMESPACE::StartParam4WithoutLogin& param = startParam.param.withoutloginStart;
+                ZOOM_SDK_NAMESPACE::StartParam4NormalUser& param = startParam.param.normaluserStart;
                 param.meetingNumber = 7723013754ULL; // Your Meeting ID
-                param.userName = L"OBS Camera Bot";
-                param.zoomuserType = ZOOM_SDK_NAMESPACE::ZoomUserType_APIUSER;
-                
-                // YOUR DIGITAL KEY (ZAK) GOES HERE:
-                param.userZAK = L"eyJ0eXAiOiJKV1QiLCJzdiI6IjAwMDAwMiIsInptX3NrbSI6InptX28ybSIsImFsZyI6IkhTMjU2In0.eyJhdWQiOiJjbGllbnRzbSIsInVpZCI6IllwTWtZd2NJUUNhZlppcFNwVWFLSGciLCJ6aWQiOiIyOTYyMDRhZDc5NjQ0ODU4YTU0MGE2Y2M0ZWJmZWY2ZSIsImlzcyI6IndlYiIsInNrIjoiNDE1OTAzMzIwMzM5NjM3ODgyNSIsInN0eSI6MTAwLCJ3Y2QiOiJhdzEiLCJjbHQiOjAsImV4cCI6MTc3Mzk2NTMyOSwiaWF0IjoxNzczOTU4MTI5LCJhaWQiOiIxYks4NEJzS1FXaWMzUWJqYWtqR2xnIiwiY2lkIjoiIn0.hYGt-9nYzLhEQjYnDsZ9IUBROmi2O_FrEkev4eQf0Ic"; 
                 
                 // Keep the bot's mic and camera off by default
                 param.isAudioOff = true;
                 param.isVideoOff = true;
 
-                // Fire the START command instead of JOIN
                 ZOOM_SDK_NAMESPACE::SDKError err = meeting_service->Start(startParam);
                 if (err == ZOOM_SDK_NAMESPACE::SDKERR_SUCCESS) {
                     blog(LOG_INFO, "[Zoom to OBS] Start command successfully sent to engine!");
@@ -166,14 +185,11 @@ public:
                     blog(LOG_ERROR, "[Zoom to OBS] ERROR: Failed to send start command. Code: %d", err);
                 }
             }
-            // ---------------------------------
-            
         } else {
-            blog(LOG_ERROR, "[Zoom to OBS] RADIO MESSAGE: ERROR! Zoom rejected our token. Error Code: %d", ret);
+            blog(LOG_ERROR, "[Zoom to OBS] ERROR: Login failed. (Did 2FA trigger? Reason Code: %d)", reason);
         }
     }
 
-    virtual void onLoginReturnWithReason(ZOOM_SDK_NAMESPACE::LOGINSTATUS ret, ZOOM_SDK_NAMESPACE::IAccountInfo* pAccountInfo, ZOOM_SDK_NAMESPACE::LoginFailReason reason) override {}
     virtual void onLogout() override {}
     virtual void onZoomIdentityExpired() override {}
     virtual void onZoomAuthIdentityExpired() override {}
