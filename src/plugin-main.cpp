@@ -140,8 +140,8 @@ public:
                 // --- PHASE 2A: LOG IN WITH EMAIL & PASSWORD ---
                 ZOOM_SDK_NAMESPACE::LoginParam loginParam;
                 loginParam.loginType = ZOOM_SDK_NAMESPACE::LoginType_Email;
-                loginParam.ut.emailLoginAndSignup.userName = L"YOUR_EMAIL_HERE@DOMAIN.COM"; // <-- PUT YOUR EMAIL HERE
-                loginParam.ut.emailLoginAndSignup.password = L"YOUR_PASSWORD_HERE";       // <-- PUT YOUR PASSWORD HERE
+                loginParam.ut.emailLoginAndSignup.userName = L"david@letsdovideo.com"; // <-- PUT YOUR EMAIL HERE
+                loginParam.ut.emailLoginAndSignup.password = L"1nSecure";       // <-- PUT YOUR PASSWORD HERE
                 loginParam.ut.emailLoginAndSignup.bRememberMe = true;
                 
                 ZOOM_SDK_NAMESPACE::SDKError err = auth_service->Login(loginParam);
