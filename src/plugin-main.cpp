@@ -22,9 +22,7 @@
 #include "rawdata/zoom_rawdata_api.h"
 
 // --- THE OBS VISUAL TARGET ---
-// This holds the physical OBS source on your screen so the catcher can paint to it
 static obs_source_t* g_participantSource = nullptr;
-
 
 // --- 3. THE ZOOM VIDEO CATCHER ---
 class ZoomVideoCatcher : public ZOOM_SDK_NAMESPACE::IZoomSDKRendererDelegate {
@@ -33,61 +31,35 @@ public:
         unsigned int width = data->GetStreamWidth();
         unsigned int height = data->GetStreamHeight();
         
-        // Throttle the log so we don't spam OBS to death
         static int frameCount = 0;
         if (frameCount % 300 == 0) { 
-            blog(LOG_INFO, "[Zoom to OBS] CATCHER ALERT: Painting Video Frame! Resolution: %dx%d", width, height);
+            blog(LOG_INFO, "[ISO for OBS] CATCHER ALERT: Painting Video Frame! Resolution: %dx%d", width, height);
         }
         frameCount++;
 
-        // If the user hasn't added the source to their OBS scene yet, just drop the frame
         if (!g_participantSource) return;
 
-        // --- THE MAGIC: PACKAGING ZOOM PIXELS FOR OBS ---
         struct obs_source_frame obs_frame = {};
         obs_frame.format = VIDEO_FORMAT_I420; 
         obs_frame.width = width;
         obs_frame.height = height;
         
-        // Grab the raw pixels from Zoom
         obs_frame.data[0] = (uint8_t*)data->GetYBuffer();
         obs_frame.data[1] = (uint8_t*)data->GetUBuffer();
         obs_frame.data[2] = (uint8_t*)data->GetVBuffer();
         
-        // Define the row widths (Standard I420 format)
         obs_frame.linesize[0] = width;
         obs_frame.linesize[1] = width / 2;
         obs_frame.linesize[2] = width / 2;
         
-        // Standard OBS color fix
         video_format_get_parameters(VIDEO_CS_DEFAULT, VIDEO_RANGE_PARTIAL, 
                                     obs_frame.color_matrix, 
                                     obs_frame.color_range_min, 
                                     obs_frame.color_range_max);
         
-        // --- THE ZERO-LATENCY FIX ---
-        // Zoom gives us the hardware capture time in milliseconds.
-        // OBS requires nanoseconds, so we multiply by 1,000,000.
-        // No more fake clocks. No more traffic jams.
+        // --- ZERO-LATENCY HARDWARE CLOCK ---
         obs_frame.timestamp = data->GetTimeStamp() * 1000000ULL;
         
-        // PAINT IT TO THE OBS SCREEN!
-        obs_source_output_video(g_participantSource, &obs_frame);
-    }
-
-    virtual void onRawDataStatusChanged(RawDataStatus status) override {}
-    virtual void onRendererBeDestroyed() override {}
-};
-        
-        // Keep the clock ticking for smooth playback
-        uint64_t now = os_gettime_ns();
-        if (g_next_timestamp == 0 || g_next_timestamp < now - 100000000ULL) {
-            g_next_timestamp = now; 
-        }
-        obs_frame.timestamp = g_next_timestamp;
-        g_next_timestamp += 33333333ULL; // ~30fps
-        
-        // PAINT IT TO THE OBS SCREEN!
         obs_source_output_video(g_participantSource, &obs_frame);
     }
 
@@ -104,7 +76,7 @@ class ZoomRecordingListener : public ZOOM_SDK_NAMESPACE::IMeetingRecordingCtrlEv
 public:
     virtual void onRecordPrivilegeChanged(bool bCanRec) override {
         if (bCanRec) {
-            blog(LOG_INFO, "[Zoom to OBS] BOOM! Host granted recording permission!");
+            blog(LOG_INFO, "[ISO for OBS] BOOM! Host granted recording permission!");
             
             ZOOM_SDK_NAMESPACE::IMeetingService* meeting_service = nullptr;
             ZOOM_SDK_NAMESPACE::CreateMeetingService(&meeting_service);
@@ -115,7 +87,7 @@ public:
                 ZOOM_SDK_NAMESPACE::SDKError rec_err = rec_ctrl->StartRawRecording();
                 
                 if (rec_err == ZOOM_SDK_NAMESPACE::SDKERR_SUCCESS) {
-                    blog(LOG_INFO, "[Zoom to OBS] Raw Recording started. Creating video pipeline...");
+                    blog(LOG_INFO, "[ISO for OBS] Raw Recording started. Creating video pipeline...");
                     
                     ZOOM_SDK_NAMESPACE::SDKError err = ZOOM_SDK_NAMESPACE::createRenderer(&g_videoRenderer, &g_videoCatcher);
                     
@@ -128,7 +100,7 @@ public:
                             if (userList && userList->GetCount() > 0) {
                                 unsigned int target_user_id = userList->GetItem(0);
                                 err = g_videoRenderer->subscribe(target_user_id, ZOOM_SDK_NAMESPACE::RAW_DATA_TYPE_VIDEO);
-                                blog(LOG_INFO, "[Zoom to OBS] Video Catcher attached to User ID %u! Subscribe result: %d", target_user_id, err);
+                                blog(LOG_INFO, "[ISO for OBS] Video Catcher attached to User ID %u! Subscribe result: %d", target_user_id, err);
                             }
                         }
                     }
@@ -163,7 +135,7 @@ class ZoomMeetingListener : public ZOOM_SDK_NAMESPACE::IMeetingServiceEvent {
 public:
     virtual void onMeetingStatusChanged(ZOOM_SDK_NAMESPACE::MeetingStatus status, int iResult = 0) override {
         if (status == ZOOM_SDK_NAMESPACE::MEETING_STATUS_INMEETING) {
-            blog(LOG_INFO, "[Zoom to OBS] SUCCESS! WE ARE OFFICIALLY IN THE MEETING!");
+            blog(LOG_INFO, "[ISO for OBS] SUCCESS! WE ARE OFFICIALLY IN THE MEETING!");
             
             ZOOM_SDK_NAMESPACE::IMeetingService* meeting_service = nullptr;
             ZOOM_SDK_NAMESPACE::CreateMeetingService(&meeting_service);
@@ -171,7 +143,7 @@ public:
                 ZOOM_SDK_NAMESPACE::IMeetingRecordingController* rec_ctrl = meeting_service->GetMeetingRecordingController();
                 if (rec_ctrl) {
                     rec_ctrl->SetEvent(&g_recordingListener);
-                    blog(LOG_INFO, "[Zoom to OBS] Waiting for Host to click 'Allow to Record Local Files'...");
+                    blog(LOG_INFO, "[ISO for OBS] Waiting for Host to click 'Allow to Record Local Files'...");
                 }
             }
         }
@@ -235,115 +207,3 @@ public:
     std::string source_type;
 
     ZoomSource(obs_source_t* src, const std::string& source_type_name) {
-        source = src;
-        source_type = source_type_name;
-        
-        // If this is the Participant source, hook it up to our global variable!
-        if (source_type == "Participant") {
-            g_participantSource = source;
-            blog(LOG_INFO, "[Zoom to OBS] Zoom Participant added to Scene! Ready to paint.");
-        }
-    }
-
-    ~ZoomSource() {
-        if (source_type == "Participant") {
-            g_participantSource = nullptr; // Unhook it when deleted
-        }
-    }
-};
-// --- THE OBS UI (PROPERTIES WINDOW) ---
-obs_properties_t* zp_get_properties(void *data) {
-    obs_properties_t* props = obs_properties_create();
-    
-    // Create the dropdown menu item
-    obs_property_t* drop_down = obs_properties_add_list(props, 
-                                                        "target_user",           // The internal variable name
-                                                        "Select Participant:",   // The text the user sees
-                                                        OBS_COMBO_TYPE_LIST, 
-                                                        OBS_COMBO_FORMAT_INT);
-    
-    // Add some dummy names just to prove the UI draws correctly
-    obs_property_list_add_int(drop_down, "Auto-Select (First Person)", 0);
-    obs_property_list_add_int(drop_down, "David (Dummy Host)", 123456);
-    obs_property_list_add_int(drop_down, "Guest 1 (Dummy)", 987654);
-
-    return props;
-}
-
-void zp_update(void *data, obs_data_t *settings) {
-    // This fires every time the user clicks OK or changes the dropdown!
-    int selected_id = obs_data_get_int(settings, "target_user");
-    
-    blog(LOG_INFO, "[ISO for OBS] UI TRIGGERED! User selected ID: %d", selected_id);
-}
-// ----------------------------------------------------------------------------
-// OBS C-API BRIDGES
-// ----------------------------------------------------------------------------
-void* zg_create(obs_data_t* settings, obs_source_t* source) { return new ZoomSource(source, "Gallery"); }
-void* zp_create(obs_data_t* settings, obs_source_t* source) { return new ZoomSource(source, "Participant"); }
-void* zs_create(obs_data_t* settings, obs_source_t* source) { return new ZoomSource(source, "Screenshare"); }
-
-void z_destroy(void* data) { delete static_cast<ZoomSource*>(data); }
-
-// ----------------------------------------------------------------------------
-// PLUGIN REGISTRATION
-// ----------------------------------------------------------------------------
-struct obs_source_info zoom_participant_info = {};
-struct obs_source_info zoom_screenshare_info = {};
-struct obs_source_info zoom_gallery_info = {};
-
-OBS_DECLARE_MODULE()
-OBS_MODULE_USE_DEFAULT_LOCALE("obs-zoom-connector", "en-US")
-
-bool obs_module_load(void) {
-    zoom_participant_info.id = "zoom_participant_source";
-    zoom_participant_info.type = OBS_SOURCE_TYPE_INPUT;
-    zoom_participant_info.output_flags = OBS_SOURCE_ASYNC_VIDEO;
-    zoom_participant_info.get_name = [](void*) { return "Zoom Participant"; };
-    zoom_participant_info.create = zp_create;
-    zoom_participant_info.destroy = z_destroy;
-
-    // --- ADD THESE TWO LINES ---
-    zoom_participant_info.get_properties = zp_get_properties;
-    zoom_participant_info.update = zp_update;
-    // ---------------------------
-
-    zoom_screenshare_info.id = "zoom_screenshare_source";
-    zoom_screenshare_info.type = OBS_SOURCE_TYPE_INPUT;
-    zoom_screenshare_info.output_flags = OBS_SOURCE_ASYNC_VIDEO;
-    zoom_screenshare_info.get_name = [](void*) { return "Zoom Screenshare"; };
-    zoom_screenshare_info.create = zs_create;
-    zoom_screenshare_info.destroy = z_destroy;
-
-    zoom_gallery_info.id = "zoom_gallery_source";
-    zoom_gallery_info.type = OBS_SOURCE_TYPE_INPUT;
-    zoom_gallery_info.output_flags = OBS_SOURCE_ASYNC_VIDEO; 
-    zoom_gallery_info.get_name = [](void*) { return "Zoom Gallery"; };
-    zoom_gallery_info.create = zg_create;
-    zoom_gallery_info.destroy = z_destroy;
-
-    obs_register_source(&zoom_participant_info);
-    obs_register_source(&zoom_screenshare_info);
-    obs_register_source(&zoom_gallery_info);
-
-// --- WAKE UP THE ZOOM ENGINE ---
-    ZOOM_SDK_NAMESPACE::InitParam initParam;
-    initParam.strWebDomain = L"https://zoom.us";
-    
-    ZOOM_SDK_NAMESPACE::SDKError err = ZOOM_SDK_NAMESPACE::InitSDK(initParam);
-    
-   if (err == ZOOM_SDK_NAMESPACE::SDKERR_SUCCESS) {
-        ZOOM_SDK_NAMESPACE::IAuthService* auth_service = nullptr;
-        err = ZOOM_SDK_NAMESPACE::CreateAuthService(&auth_service);
-        
-        if (err == ZOOM_SDK_NAMESPACE::SDKERR_SUCCESS && auth_service) {
-            auth_service->SetEvent(&g_authListener);
-            ZOOM_SDK_NAMESPACE::AuthContext authContext;
-            authContext.jwt_token = L"eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJhcHBLZXkiOiJZNzNqelFSbVF4aWhoNFo3MnFSMnRnIiwiaWF0IjoxNzczOTAwMDAwLCJleHAiOjE3NzM5ODY0MDAsInRva2VuRXhwIjoxNzczOTg2NDAwfQ.R91nzB0y6ALagBGcz3UL48LEqXb2qnPfJ7id0zNd45A"; 
-            auth_service->SDKAuth(authContext);
-        }
-    }
-    return true;
-}
-
-void obs_module_unload(void) {}
