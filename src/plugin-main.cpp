@@ -20,6 +20,7 @@ extern "C" {
 // 3. Meeting Components (AUDIO MUST GO BEFORE PARTICIPANTS!)
 #include "meeting_service_components/meeting_audio_interface.h"
 #include "meeting_service_components/meeting_participants_ctrl_interface.h"
+#include "meeting_service_components/meeting_recording_interface.h" // <-- ADDED FOR RECORDING PERMISSIONS
 
 // 4. Raw Data LAST
 #include "rawdata/rawdata_renderer_interface.h"
@@ -28,9 +29,7 @@ extern "C" {
 // --- 3. THE ZOOM VIDEO CATCHER ---
 class ZoomVideoCatcher : public ZOOM_SDK_NAMESPACE::IZoomSDKRendererDelegate {
 public:
-    // FIX: Removed the ZOOM_SDK_NAMESPACE:: prefix from YUVRawDataI420
     virtual void onRawDataFrameReceived(YUVRawDataI420* data) override {
-        // Extract the exact dimensions using the dictionary we just checked!
         unsigned int width = data->GetStreamWidth();
         unsigned int height = data->GetStreamHeight();
         
@@ -58,52 +57,89 @@ static ZoomVideoCatcher g_videoCatcher;
 static ZOOM_SDK_NAMESPACE::IZoomSDKRenderer* g_videoRenderer = nullptr;
 // ---------------------------------
 
-// ---------------------------------
+// --- 4. THE RECORDING WALKIE-TALKIE ---
+class ZoomRecordingListener : public ZOOM_SDK_NAMESPACE::IMeetingRecordingCtrlEvent {
+public:
+    virtual void onRecordPrivilegeChanged(bool bCanRec) override {
+        if (bCanRec) {
+            blog(LOG_INFO, "[Zoom to OBS] BOOM! Host granted recording permission!");
+            
+            ZOOM_SDK_NAMESPACE::IMeetingService* meeting_service = nullptr;
+            ZOOM_SDK_NAMESPACE::CreateMeetingService(&meeting_service);
+            if (!meeting_service) return;
+
+            ZOOM_SDK_NAMESPACE::IMeetingRecordingController* rec_ctrl = meeting_service->GetMeetingRecordingController();
+            if (rec_ctrl) {
+                // Zoom requires us to formally start a "raw recording" before stealing pixels
+                ZOOM_SDK_NAMESPACE::SDKError rec_err = rec_ctrl->StartRawRecording();
+                
+                if (rec_err == ZOOM_SDK_NAMESPACE::SDKERR_SUCCESS) {
+                    blog(LOG_INFO, "[Zoom to OBS] Raw Recording started. Creating video pipeline...");
+                    
+                    // --- PHASE 3: CREATE THE VIDEO PIPELINE ---
+                    ZOOM_SDK_NAMESPACE::SDKError err = ZOOM_SDK_NAMESPACE::createRenderer(&g_videoRenderer, &g_videoCatcher);
+                    
+                    if (err == ZOOM_SDK_NAMESPACE::SDKERR_SUCCESS && g_videoRenderer) {
+                        g_videoRenderer->setRawDataResolution(ZOOM_SDK_NAMESPACE::ZoomSDKResolution_720P);
+                        
+                        ZOOM_SDK_NAMESPACE::IMeetingParticipantsController* part_ctrl = meeting_service->GetMeetingParticipantsController();
+                        if (part_ctrl) {
+                            ZOOM_SDK_NAMESPACE::IList<unsigned int>* userList = part_ctrl->GetParticipantsList();
+                            if (userList && userList->GetCount() > 0) {
+                                // Grab the User ID of the very first person in the room
+                                unsigned int target_user_id = userList->GetItem(0);
+                                
+                                err = g_videoRenderer->subscribe(target_user_id, ZOOM_SDK_NAMESPACE::RAW_DATA_TYPE_VIDEO);
+                                blog(LOG_INFO, "[Zoom to OBS] Video Catcher attached to User ID %u! Subscribe result: %d", target_user_id, err);
+                            }
+                        }
+                    } else {
+                        blog(LOG_ERROR, "[Zoom to OBS] ERROR: Failed to create video renderer. Code: %d", err);
+                    }
+                } else {
+                    blog(LOG_ERROR, "[Zoom to OBS] ERROR: Failed to start raw recording. Code: %d", rec_err);
+                }
+            }
+        }
+    }
+
+    // Required overrides to keep the compiler happy
+    virtual void onRecordingStatus(ZOOM_SDK_NAMESPACE::RecordingStatus status) override {}
+    virtual void onCloudRecordingStatus(ZOOM_SDK_NAMESPACE::RecordingStatus status) override {}
+    virtual void onLocalRecordingPrivilegeRequestStatus(ZOOM_SDK_NAMESPACE::RequestLocalRecordingStatus status) override {}
+    virtual void onLocalRecordingPrivilegeRequested(ZOOM_SDK_NAMESPACE::IRequestLocalRecordingPrivilegeHandler* handler) override {}
+    virtual void onCloudRecordingStorageFull(time_t gracePeriodDate) override {}
+    virtual void onEnableAndStartSmartRecordingRequested(ZOOM_SDK_NAMESPACE::IRequestStartSmartRecordingHandler* handler) override {}
+    virtual void onSmartRecordingEnableActionCallback(ZOOM_SDK_NAMESPACE::RequestStartSmartRecordingStatus status) override {}
+#if defined(WIN32)
+    virtual void onCustomizedLocalRecordingSourceNotification(ZOOM_SDK_NAMESPACE::ICustomizedLocalRecordingLayoutHelper* layout_helper) override {}
+#endif
+};
+
+// Create the global instance
+static ZoomRecordingListener g_recordingListener;
+// ----------------------------------------------
+
 
 // --- 1. THE ZOOM MEETING WALKIE-TALKIE (Must go first!) ---
 class ZoomMeetingListener : public ZOOM_SDK_NAMESPACE::IMeetingServiceEvent {
 public:
-virtual void onMeetingStatusChanged(ZOOM_SDK_NAMESPACE::MeetingStatus status, int iResult = 0) override {
+    virtual void onMeetingStatusChanged(ZOOM_SDK_NAMESPACE::MeetingStatus status, int iResult = 0) override {
         blog(LOG_INFO, "[Zoom to OBS] MEETING STATUS CHANGED: Status Code %d (Result: %d)", status, iResult);
         
         if (status == ZOOM_SDK_NAMESPACE::MEETING_STATUS_INMEETING) {
             blog(LOG_INFO, "[Zoom to OBS] SUCCESS! WE ARE OFFICIALLY IN THE MEETING!");
             
-            // --- PHASE 3: CREATE THE VIDEO PIPELINE ---
-            ZOOM_SDK_NAMESPACE::SDKError err = ZOOM_SDK_NAMESPACE::createRenderer(&g_videoRenderer, &g_videoCatcher);
-            
-            if (err == ZOOM_SDK_NAMESPACE::SDKERR_SUCCESS && g_videoRenderer) {
-                // Set our desired resolution
-                g_videoRenderer->setRawDataResolution(ZOOM_SDK_NAMESPACE::ZoomSDKResolution_720P);
-                
-                // Ask Zoom for the list of people in the room
-                ZOOM_SDK_NAMESPACE::IMeetingService* meeting_service = nullptr;
-                ZOOM_SDK_NAMESPACE::CreateMeetingService(&meeting_service);
-                
-                if (meeting_service) {
-                    ZOOM_SDK_NAMESPACE::IMeetingParticipantsController* part_ctrl = meeting_service->GetMeetingParticipantsController();
-                    if (part_ctrl) {
-                        ZOOM_SDK_NAMESPACE::IList<unsigned int>* userList = part_ctrl->GetParticipantsList();
-                        
-                        if (userList && userList->GetCount() > 0) {
-                            // Grab the User ID of the very first person in the room
-                            unsigned int target_user_id = userList->GetItem(0);
-                            
-                            // Attach the video catcher to that specific person!
-                            err = g_videoRenderer->subscribe(target_user_id, ZOOM_SDK_NAMESPACE::RAW_DATA_TYPE_VIDEO);
-                            
-                            if (err == ZOOM_SDK_NAMESPACE::SDKERR_SUCCESS) {
-                                blog(LOG_INFO, "[Zoom to OBS] SUCCESS: Video Catcher attached to User ID %u!", target_user_id);
-                            } else {
-                                blog(LOG_ERROR, "[Zoom to OBS] ERROR: Failed to subscribe. Code: %d", err);
-                            }
-                        }
-                    }
+            // Hand the recording Walkie-Talkie to Zoom and wait for permission
+            ZOOM_SDK_NAMESPACE::IMeetingService* meeting_service = nullptr;
+            ZOOM_SDK_NAMESPACE::CreateMeetingService(&meeting_service);
+            if (meeting_service) {
+                ZOOM_SDK_NAMESPACE::IMeetingRecordingController* rec_ctrl = meeting_service->GetMeetingRecordingController();
+                if (rec_ctrl) {
+                    rec_ctrl->SetEvent(&g_recordingListener);
+                    blog(LOG_INFO, "[Zoom to OBS] Waiting for Host to click 'Allow to Record Local Files'...");
                 }
-            } else {
-                blog(LOG_ERROR, "[Zoom to OBS] ERROR: Failed to create video renderer. Code: %d", err);
             }
-            // -----------------------------------------
             
         } else if (status == ZOOM_SDK_NAMESPACE::MEETING_STATUS_WAITINGFORHOST) {
             blog(LOG_INFO, "[Zoom to OBS] We are in the Waiting Room...");
@@ -132,64 +168,42 @@ class ZoomAuthListener : public ZOOM_SDK_NAMESPACE::IAuthServiceEvent {
 public:
     virtual void onAuthenticationReturn(ZOOM_SDK_NAMESPACE::AuthResult ret) override {
         if (ret == ZOOM_SDK_NAMESPACE::AUTHRET_SUCCESS) {
-            blog(LOG_INFO, "[Zoom to OBS] SUCCESS! App is Authenticated. Now logging in as David...");
+            blog(LOG_INFO, "[Zoom to OBS] RADIO MESSAGE: SUCCESS! Zoom Engine is fully logged in and ready!");
             
-            ZOOM_SDK_NAMESPACE::IAuthService* auth_service = nullptr;
-            ZOOM_SDK_NAMESPACE::CreateAuthService(&auth_service);
-            if (auth_service) {
-                // --- PHASE 2A: LOG IN WITH EMAIL & PASSWORD ---
-                ZOOM_SDK_NAMESPACE::LoginParam loginParam;
-                loginParam.loginType = ZOOM_SDK_NAMESPACE::LoginType_Email;
-                loginParam.ut.emailLoginAndSignup.userName = L"david@letsdovideo.com"; // <-- PUT YOUR EMAIL HERE
-                loginParam.ut.emailLoginAndSignup.password = L"1nSecure";       // <-- PUT YOUR PASSWORD HERE
-                loginParam.ut.emailLoginAndSignup.bRememberMe = true;
-                
-                ZOOM_SDK_NAMESPACE::SDKError err = auth_service->Login(loginParam);
-                if (err != ZOOM_SDK_NAMESPACE::SDKERR_SUCCESS) {
-                    blog(LOG_ERROR, "[Zoom to OBS] ERROR: Failed to send login command. Code: %d", err);
-                }
-            }
-        } else {
-            blog(LOG_ERROR, "[Zoom to OBS] RADIO MESSAGE: ERROR! Zoom rejected our JWT. Code: %d", ret);
-        }
-    }
-
-    virtual void onLoginReturnWithReason(ZOOM_SDK_NAMESPACE::LOGINSTATUS ret, ZOOM_SDK_NAMESPACE::IAccountInfo* pAccountInfo, ZOOM_SDK_NAMESPACE::LoginFailReason reason) override {
-        blog(LOG_INFO, "[Zoom to OBS] LOGIN STATUS: %d (Reason Code: %d)", ret, reason);
-        
-        if (ret == ZOOM_SDK_NAMESPACE::LOGIN_SUCCESS) {
-            blog(LOG_INFO, "[Zoom to OBS] SUCCESS! Logged in securely. Starting the meeting as Host...");
-            
-            // --- PHASE 2B: START THE MEETING AS A REAL LOGGED-IN USER ---
             ZOOM_SDK_NAMESPACE::IMeetingService* meeting_service = nullptr;
             ZOOM_SDK_NAMESPACE::CreateMeetingService(&meeting_service);
             
             if (meeting_service) {
+                // Hand the meeting walkie-talkie to the engine
                 meeting_service->SetEvent(&g_meetingListener);
                 
-                ZOOM_SDK_NAMESPACE::StartParam startParam;
-                // Notice we changed this from WITHOUT_LOGIN to NORMALUSER
-                startParam.userType = ZOOM_SDK_NAMESPACE::SDK_UT_NORMALUSER; 
+                // --- PHASE 2: JOIN THE MEETING AS A GUEST ---
+                ZOOM_SDK_NAMESPACE::JoinParam joinParam;
+                joinParam.userType = ZOOM_SDK_NAMESPACE::SDK_UT_WITHOUT_LOGIN;
                 
-                ZOOM_SDK_NAMESPACE::StartParam4NormalUser& param = startParam.param.normaluserStart;
+                ZOOM_SDK_NAMESPACE::JoinParam4WithoutLogin& param = joinParam.param.withoutloginuserJoin;
                 param.meetingNumber = 7723013754ULL; // Your Meeting ID
+                param.userName = L"OBS Camera Bot";
+                param.psw = L""; 
                 
                 // Keep the bot's mic and camera off by default
                 param.isAudioOff = true;
                 param.isVideoOff = true;
 
-                ZOOM_SDK_NAMESPACE::SDKError err = meeting_service->Start(startParam);
+                // Fire the JOIN command
+                ZOOM_SDK_NAMESPACE::SDKError err = meeting_service->Join(joinParam);
                 if (err == ZOOM_SDK_NAMESPACE::SDKERR_SUCCESS) {
-                    blog(LOG_INFO, "[Zoom to OBS] Start command successfully sent to engine!");
+                    blog(LOG_INFO, "[Zoom to OBS] Join command successfully sent to engine!");
                 } else {
-                    blog(LOG_ERROR, "[Zoom to OBS] ERROR: Failed to send start command. Code: %d", err);
+                    blog(LOG_ERROR, "[Zoom to OBS] ERROR: Failed to send join command. Code: %d", err);
                 }
             }
         } else {
-            blog(LOG_ERROR, "[Zoom to OBS] ERROR: Login failed. (Did 2FA trigger? Reason Code: %d)", reason);
+            blog(LOG_ERROR, "[Zoom to OBS] RADIO MESSAGE: ERROR! Zoom rejected our JWT. Error Code: %d", ret);
         }
     }
 
+    virtual void onLoginReturnWithReason(ZOOM_SDK_NAMESPACE::LOGINSTATUS ret, ZOOM_SDK_NAMESPACE::IAccountInfo* pAccountInfo, ZOOM_SDK_NAMESPACE::LoginFailReason reason) override {}
     virtual void onLogout() override {}
     virtual void onZoomIdentityExpired() override {}
     virtual void onZoomAuthIdentityExpired() override {}
@@ -293,98 +307,3 @@ public:
     }
 
     ~ZoomSource() {
-        webSocket.stop();
-        if (parser) av_parser_close(parser);
-        if (codec_ctx) avcodec_free_context(&codec_ctx);
-        if (frame) av_frame_free(&frame);
-        if (pkt) av_packet_free(&pkt);
-    }
-};
-
-// ----------------------------------------------------------------------------
-// OBS C-API BRIDGES
-// ----------------------------------------------------------------------------
-void* zg_create(obs_data_t* settings, obs_source_t* source) { return new ZoomSource(source, "Gallery"); }
-void* zp_create(obs_data_t* settings, obs_source_t* source) { return new ZoomSource(source, "Participant"); }
-void* zs_create(obs_data_t* settings, obs_source_t* source) { return new ZoomSource(source, "Screenshare"); }
-
-void z_destroy(void* data) { 
-    delete static_cast<ZoomSource*>(data); 
-}
-
-// ----------------------------------------------------------------------------
-// PLUGIN REGISTRATION
-// ----------------------------------------------------------------------------
-struct obs_source_info zoom_participant_info = {};
-struct obs_source_info zoom_screenshare_info = {};
-struct obs_source_info zoom_gallery_info = {};
-
-OBS_DECLARE_MODULE()
-OBS_MODULE_USE_DEFAULT_LOCALE("obs-zoom-connector", "en-US")
-
-bool obs_module_load(void) {
-    zoom_participant_info.id = "zoom_participant_source";
-    zoom_participant_info.type = OBS_SOURCE_TYPE_INPUT;
-    zoom_participant_info.output_flags = OBS_SOURCE_ASYNC_VIDEO;
-    zoom_participant_info.get_name = [](void*) { return "Zoom Participant"; };
-    zoom_participant_info.create = zp_create;
-    zoom_participant_info.destroy = z_destroy;
-
-    zoom_screenshare_info.id = "zoom_screenshare_source";
-    zoom_screenshare_info.type = OBS_SOURCE_TYPE_INPUT;
-    zoom_screenshare_info.output_flags = OBS_SOURCE_ASYNC_VIDEO;
-    zoom_screenshare_info.get_name = [](void*) { return "Zoom Screenshare"; };
-    zoom_screenshare_info.create = zs_create;
-    zoom_screenshare_info.destroy = z_destroy;
-
-    zoom_gallery_info.id = "zoom_gallery_source";
-    zoom_gallery_info.type = OBS_SOURCE_TYPE_INPUT;
-    zoom_gallery_info.output_flags = OBS_SOURCE_ASYNC_VIDEO; 
-    zoom_gallery_info.get_name = [](void*) { return "Zoom Gallery"; };
-    zoom_gallery_info.create = zg_create;
-    zoom_gallery_info.destroy = z_destroy;
-
-    obs_register_source(&zoom_participant_info);
-    obs_register_source(&zoom_screenshare_info);
-    obs_register_source(&zoom_gallery_info);
-// --- WAKE UP THE ZOOM ENGINE ---
-    ZOOM_SDK_NAMESPACE::InitParam initParam;
-    initParam.strWebDomain = L"https://zoom.us";
-    
-    ZOOM_SDK_NAMESPACE::SDKError err = ZOOM_SDK_NAMESPACE::InitSDK(initParam);
-    
-   if (err == ZOOM_SDK_NAMESPACE::SDKERR_SUCCESS) {
-        blog(LOG_INFO, "[Zoom to OBS] SUCCESS: Zoom Meeting SDK Initialized!");
-        
-        // --- NEW: AUTHENTICATE THE ENGINE ---
-        ZOOM_SDK_NAMESPACE::IAuthService* auth_service = nullptr;
-        err = ZOOM_SDK_NAMESPACE::CreateAuthService(&auth_service);
-        
-if (err == ZOOM_SDK_NAMESPACE::SDKERR_SUCCESS && auth_service) {
-            
-            // --- NEW: Hand the walkie-talkie to Zoom ---
-            auth_service->SetEvent(&g_authListener);
-            // -------------------------------------------
-
-            ZOOM_SDK_NAMESPACE::AuthContext authContext;
-            
-            // PASTE YOUR JWT TOKEN HERE:
-            authContext.jwt_token = L"eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJhcHBLZXkiOiJZNzNqelFSbVF4aWhoNFo3MnFSMnRnIiwiaWF0IjoxNzczOTAwMDAwLCJleHAiOjE3NzM5ODY0MDAsInRva2VuRXhwIjoxNzczOTg2NDAwfQ.R91nzB0y6ALagBGcz3UL48LEqXb2qnPfJ7id0zNd45A"; 
-            
-            err = auth_service->SDKAuth(authContext);
-            if (err == ZOOM_SDK_NAMESPACE::SDKERR_SUCCESS) {
-                blog(LOG_INFO, "[Zoom to OBS] SUCCESS: Auth request sent to Zoom!");
-            } else {
-                blog(LOG_ERROR, "[Zoom to OBS] ERROR: Auth request failed. Error: %d", err);
-            }
-        }
-        // ------------------------------------
-
-    } else {
-        blog(LOG_ERROR, "[Zoom to OBS] ERROR: Zoom Meeting SDK failed to initialize. Error Code: %d", err);
-    }
-    //
-    return true;
-}
-
-void obs_module_unload(void) {}
