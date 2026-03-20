@@ -295,7 +295,7 @@ bool obs_module_load(void) {
     obs_register_source(&zoom_screenshare_info);
 
 // --- WAKE UP THE ZOOM ENGINE ---
-    ZOOM_SDK_NAMESPACE::InitParam initParam;
+    ZOOM_SDK_NAMESPACE::InitParam initParam = {}; // <-- ADDED = {} TO ZERO OUT MEMORY
     initParam.strWebDomain = L"https://zoom.us";
     
     ZOOM_SDK_NAMESPACE::SDKError err = ZOOM_SDK_NAMESPACE::InitSDK(initParam);
@@ -307,11 +307,11 @@ bool obs_module_load(void) {
         
         if (err == ZOOM_SDK_NAMESPACE::SDKERR_SUCCESS && auth_service) {
             auth_service->SetEvent(&g_authListener);
-            ZOOM_SDK_NAMESPACE::AuthContext authContext;
             
-            // --- GENERATE A NEW JWT AND PASTE IT HERE ---
+            ZOOM_SDK_NAMESPACE::AuthContext authContext = {}; // <-- ADDED = {} TO ZERO OUT MEMORY
+            
+            // --- PASTE YOUR JWT HERE ---
             authContext.jwt_token = L"eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJhcHBLZXkiOiJzWUlqWGpqelFkMmJOQ2dYMXZKWU1BIiwiaWF0IjoxNzEwODYwMDAwLCJleHAiOjE3MTE0NjQ4MDAsInRva2VuRXhwIjoxNzExNDY0ODAwfQ.PwVVrG2xkj2_LtWhFoeqF3EV7tEy9ERWMzQwmDKKVWE"; 
-            // --------------------------------------------
             
             ZOOM_SDK_NAMESPACE::SDKError auth_err = auth_service->SDKAuth(authContext);
             blog(LOG_INFO, "[ISO for OBS] SDK AUTH REQUEST SENT. STATUS: %d", auth_err);
@@ -321,3 +321,5 @@ bool obs_module_load(void) {
 }
 
 void obs_module_unload(void) {}
+
+
