@@ -251,7 +251,31 @@ public:
         }
     }
 };
+// --- THE OBS UI (PROPERTIES WINDOW) ---
+obs_properties_t* zp_get_properties(void *data) {
+    obs_properties_t* props = obs_properties_create();
+    
+    // Create the dropdown menu item
+    obs_property_t* drop_down = obs_properties_add_list(props, 
+                                                        "target_user",           // The internal variable name
+                                                        "Select Participant:",   // The text the user sees
+                                                        OBS_COMBO_TYPE_LIST, 
+                                                        OBS_COMBO_FORMAT_INT);
+    
+    // Add some dummy names just to prove the UI draws correctly
+    obs_property_list_add_int(drop_down, "Auto-Select (First Person)", 0);
+    obs_property_list_add_int(drop_down, "David (Dummy Host)", 123456);
+    obs_property_list_add_int(drop_down, "Guest 1 (Dummy)", 987654);
 
+    return props;
+}
+
+void zp_update(void *data, obs_data_t *settings) {
+    // This fires every time the user clicks OK or changes the dropdown!
+    int selected_id = obs_data_get_int(settings, "target_user");
+    
+    blog(LOG_INFO, "[ISO for OBS] UI TRIGGERED! User selected ID: %d", selected_id);
+}
 // ----------------------------------------------------------------------------
 // OBS C-API BRIDGES
 // ----------------------------------------------------------------------------
@@ -278,6 +302,11 @@ bool obs_module_load(void) {
     zoom_participant_info.get_name = [](void*) { return "Zoom Participant"; };
     zoom_participant_info.create = zp_create;
     zoom_participant_info.destroy = z_destroy;
+
+    // --- ADD THESE TWO LINES ---
+    zoom_participant_info.get_properties = zp_get_properties;
+    zoom_participant_info.update = zp_update;
+    // ---------------------------
 
     zoom_screenshare_info.id = "zoom_screenshare_source";
     zoom_screenshare_info.type = OBS_SOURCE_TYPE_INPUT;
