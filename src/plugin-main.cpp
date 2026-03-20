@@ -17,7 +17,10 @@ extern "C" {
 #include "auth_service_interface.h"
 #include "meeting_service_interface.h"
 
-// 3. Raw Data LAST
+// 3. Meeting Components (Safe to add now!)
+#include "meeting_service_components/meeting_participants_ctrl_interface.h"
+
+// 4. Raw Data LAST
 #include "rawdata/rawdata_renderer_interface.h"
 #include "rawdata/zoom_rawdata_api.h"
 
