@@ -3,7 +3,7 @@
 #include <tchar.h>
 #include <iostream>
 
-// OBS Header - Mandatory for plugin recognition
+// OBS Header
 #include <obs-module.h>
 
 // Zoom SDK Headers
@@ -14,7 +14,7 @@
 
 using namespace ZOOMSDK;
 
-// --- 1. ZOOM LISTENERS ---
+// --- 1. ZOOM LISTENERS (The verified working logic) ---
 
 class ZoomAuthListener : public IAuthServiceEvent {
 public:
@@ -68,39 +68,17 @@ ZoomMeetingListener meetingListener;
 IAuthService* g_pAuthService = nullptr;
 IMeetingService* g_pMeetingService = nullptr;
 
-// --- 3. OBS SOURCE DEFINITIONS ---
-// These structs tell OBS that "zoom_participant_source", etc. exist.
+// --- 3. OBS SOURCE DEFINITIONS (Fixed for C++17 compatibility) ---
 
-static const char* zoom_participant_get_name(void* unused) { return "Zoom Participant"; }
-static void* zoom_participant_create(obs_data_t* settings, obs_source_t* source) { return (void*)1; }
-static void zoom_participant_destroy(void* data) {}
+static const char* get_p_name(void* unused) { return "Zoom Participant"; }
+static const char* get_g_name(void* unused) { return "Zoom Gallery"; }
+static const char* get_s_name(void* unused) { return "Zoom Screenshare"; }
+static void* create_stub(obs_data_t* s, obs_source_t* src) { return (void*)1; }
+static void destroy_stub(void* d) {}
 
-struct obs_source_info zoom_participant_info = {
-    .id = "zoom_participant_source",
-    .type = OBS_SOURCE_TYPE_INPUT,
-    .output_flags = OBS_SOURCE_VIDEO,
-    .get_name = zoom_participant_get_name,
-    .create = zoom_participant_create,
-    .destroy = zoom_participant_destroy,
-};
-
-struct obs_source_info zoom_gallery_info = {
-    .id = "zoom_gallery_source",
-    .type = OBS_SOURCE_TYPE_INPUT,
-    .output_flags = OBS_SOURCE_VIDEO,
-    .get_name = [](void*) { return "Zoom Gallery"; },
-    .create = [](obs_data_t* s, obs_source_t* src) { return (void*)1; },
-    .destroy = [](void* d) {},
-};
-
-struct obs_source_info zoom_screenshare_info = {
-    .id = "zoom_screenshare_source",
-    .type = OBS_SOURCE_TYPE_INPUT,
-    .output_flags = OBS_SOURCE_VIDEO,
-    .get_name = [](void*) { return "Zoom Screenshare"; },
-    .create = [](obs_data_t* s, obs_source_t* src) { return (void*)1; },
-    .destroy = [](void* d) {},
-};
+struct obs_source_info zoom_participant_info = {};
+struct obs_source_info zoom_gallery_info = {};
+struct obs_source_info zoom_screenshare_info = {};
 
 // --- 4. OBS MODULE ENTRY POINTS ---
 
@@ -108,29 +86,49 @@ OBS_DECLARE_MODULE()
 OBS_MODULE_USE_DEFAULT_LOCALE("obs-zoom-connector", "en-US")
 
 bool obs_module_load(void) {
-    // Register the sources so they are no longer "Red" in OBS
+    // Manually assigning values to avoid Error C7555
+    zoom_participant_info.id = "zoom_participant_source";
+    zoom_participant_info.type = OBS_SOURCE_TYPE_INPUT;
+    zoom_participant_info.output_flags = OBS_SOURCE_VIDEO;
+    zoom_participant_info.get_name = get_p_name;
+    zoom_participant_info.create = create_stub;
+    zoom_participant_info.destroy = destroy_stub;
+
+    zoom_gallery_info.id = "zoom_gallery_source";
+    zoom_gallery_info.type = OBS_SOURCE_TYPE_INPUT;
+    zoom_gallery_info.output_flags = OBS_SOURCE_VIDEO;
+    zoom_gallery_info.get_name = get_g_name;
+    zoom_gallery_info.create = create_stub;
+    zoom_gallery_info.destroy = destroy_stub;
+
+    zoom_screenshare_info.id = "zoom_screenshare_source";
+    zoom_screenshare_info.type = OBS_SOURCE_TYPE_INPUT;
+    zoom_screenshare_info.output_flags = OBS_SOURCE_VIDEO;
+    zoom_screenshare_info.get_name = get_s_name;
+    zoom_screenshare_info.create = create_stub;
+    zoom_screenshare_info.destroy = destroy_stub;
+
     obs_register_source(&zoom_participant_info);
     obs_register_source(&zoom_gallery_info);
     obs_register_source(&zoom_screenshare_info);
 
-    blog(LOG_INFO, "Zoom Connector: Plugin Loaded and Sources Registered");
+    blog(LOG_INFO, "[Zoom Connector] Loaded Successfully");
     return true;
 }
 
-// --- 5. SDK INITIALIZATION LOGIC ---
+// --- 5. SDK INITIALIZATION ---
 
 extern "C" __declspec(dllexport) bool InitializeSDK(const char* jwt) {
     InitParam initParam;
     initParam.strWebDomain = _T("https://zoom.us");
     
-    SDKError err = InitSDK(initParam);
-    if (err != SDKERR_SUCCESS) return false;
+    if (InitSDK(initParam) != SDKERR_SUCCESS) return false;
 
-    if (CreateAuthService(&g_pAuthService) == SDKERR_SUCCESS) {
+    if (CreateAuthService(&g_pAuthService) == SDKERR_SUCCESS && g_pAuthService) {
         g_pAuthService->SetEvent(&authListener);
     }
 
-    if (CreateMeetingService(&g_pMeetingService) == SDKERR_SUCCESS) {
+    if (CreateMeetingService(&g_pMeetingService) == SDKERR_SUCCESS && g_pMeetingService) {
         g_pMeetingService->SetEvent(&meetingListener);
     }
 
