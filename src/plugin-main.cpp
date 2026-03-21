@@ -249,4 +249,35 @@ OBS_MODULE_USE_DEFAULT_LOCALE("obs-zoom-connector", "en-US")
 
 bool obs_module_load(void) {
     zoom_participant_info.id = "zoom_participant_source";
-    zoom_participant_info
+    zoom_participant_info.type = OBS_SOURCE_TYPE_INPUT;
+    zoom_participant_info.output_flags = OBS_SOURCE_ASYNC_VIDEO;
+    zoom_participant_info.get_name = [](void*) { return "Zoom Participant"; };
+    zoom_participant_info.create = zp_create;
+    zoom_participant_info.destroy = z_destroy;
+
+    zoom_screenshare_info.id = "zoom_screenshare_source";
+    zoom_screenshare_info.type = OBS_SOURCE_TYPE_INPUT;
+    zoom_screenshare_info.output_flags = OBS_SOURCE_ASYNC_VIDEO;
+    zoom_screenshare_info.get_name = [](void*) { return "Zoom Screenshare"; };
+    zoom_screenshare_info.create = zs_create;
+    zoom_screenshare_info.destroy = z_destroy;
+
+    obs_register_source(&zoom_participant_info);
+    obs_register_source(&zoom_screenshare_info);
+
+    ZOOM_SDK_NAMESPACE::InitParam initParam;
+    initParam.strWebDomain = L"https://zoom.us";
+    
+    if (ZOOM_SDK_NAMESPACE::InitSDK(initParam) == ZOOM_SDK_NAMESPACE::SDKERR_SUCCESS) {
+        ZOOM_SDK_NAMESPACE::IAuthService* auth_service = nullptr;
+        if (ZOOM_SDK_NAMESPACE::CreateAuthService(&auth_service) == ZOOM_SDK_NAMESPACE::SDKERR_SUCCESS && auth_service) {
+            auth_service->SetEvent(&g_authListener);
+            ZOOM_SDK_NAMESPACE::AuthContext authContext;
+            authContext.jwt_token = L"eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJhcHBLZXkiOiJZNzNqelFSbVF4aWhoNFo3MnFSMnRnIiwiaWF0IjoxNzc0MDUwMDAwLCJleHAiOjE3NzY2NDIwMDAsInRva2VuRXhwIjoxNzc2NjQyMDAwLCJyb2xlIjoxLCJ1c2VyRW1haWwiOiJEYXZpZEBMZXRzRG9WaWRlby5jb20ifQ.1ldmzxzK-gdzWJkxr7KkkwnYq8qEnbMGVTJFihAhuEA"; 
+            auth_service->SDKAuth(authContext);
+        }
+    }
+    return true;
+}
+
+void obs_module_unload(void) {}
