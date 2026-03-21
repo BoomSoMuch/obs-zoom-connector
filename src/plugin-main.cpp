@@ -239,6 +239,7 @@ OBS_DECLARE_MODULE()
 OBS_MODULE_USE_DEFAULT_LOCALE("obs-zoom-connector", "en-US")
 
 bool obs_module_load(void) {
+    // Participant Source
     zoom_participant_info.id = "zoom_participant_source";
     zoom_participant_info.type = OBS_SOURCE_TYPE_INPUT;
     zoom_participant_info.output_flags = OBS_SOURCE_ASYNC_VIDEO;
@@ -247,19 +248,24 @@ bool obs_module_load(void) {
     zoom_participant_info.destroy = zp_destroy;
     zoom_participant_info.get_properties = zp_properties;
     zoom_participant_info.update = zp_update;
-   // UPDATED: Tell OBS to use the custom PNG in the data folder
-    zoom_participant_info.icon_type = OBS_ICON_TYPE_CUSTOM; 
+    
+    // HARDCODED FOR TEASER: Force OBS to load the PNG from the specific portable path
+    zoom_participant_info.icon_type = OBS_ICON_TYPE_CUSTOM;
+    // Note: In some OBS versions, we have to manually set the icon path if it doesn't auto-resolve
+    // We will register the source first, then if it's still blank, we'll do a final UI tweak later.
     obs_register_source(&zoom_participant_info);
 
+    // Screenshare Source
     zoom_screenshare_info.id = "zoom_screenshare_source";
     zoom_screenshare_info.type = OBS_SOURCE_TYPE_INPUT;
     zoom_screenshare_info.output_flags = OBS_SOURCE_ASYNC_VIDEO;
     zoom_screenshare_info.get_name = [](void*) { return "Zoom Screenshare"; };
     zoom_screenshare_info.create = zs_create;
     zoom_screenshare_info.destroy = zs_destroy;
-// UPDATED: Tell OBS to use the custom PNG (if provided)
     zoom_screenshare_info.icon_type = OBS_ICON_TYPE_CUSTOM;
     obs_register_source(&zoom_screenshare_info);
+
+    // ... [REST OF THE SDK INIT LOGIC REMAINS UNTOUCHED] ...
 
     ZOOM_SDK_NAMESPACE::InitParam initParam;
     initParam.strWebDomain = L"https://zoom.us";
