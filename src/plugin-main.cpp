@@ -1,9 +1,9 @@
-// 1. Windows headers MUST come first for the SDK to recognize HWND, UINT64, etc.
+// 1. Windows system headers MUST be first
 #define WIN32_LEAN_AND_MEAN
 #include <windows.h>
 #include <tchar.h>
 
-// 2. Zoom SDK headers
+// 2. Zoom SDK headers (Corrected paths based on your folder structure)
 #include "zoom_sdk.h"
 #include "meeting_service_interface.h"
 #include "auth_service_interface.h"
@@ -62,17 +62,19 @@ public:
 #endif
 };
 
-// Global instances
+// Global Listener Instances
 ZoomAuthListener authListener;
 ZoomMeetingListener meetingListener;
 ZoomRecordingListener recordingListener;
-IZoomSDK* g_pSDKInst = nullptr; // Rename to avoid confusion with the function name
+
+// Global SDK Pointer
+IZoomSDK* g_pSDKInst = nullptr; 
 
 extern "C" __declspec(dllexport) bool InitializeSDK(const char* jwt) {
     InitParam initParam;
     initParam.strWebDomain = _T("https://zoom.us");
     
-    // Use the global pointer
+    // Call the SDK-provided function to create the instance
     SDKError err = CreateSDKInst(&g_pSDKInst);
     if (err != SDKERR_SUCCESS || !g_pSDKInst) return false;
 
