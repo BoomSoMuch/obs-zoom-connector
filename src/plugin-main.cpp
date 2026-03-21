@@ -258,6 +258,9 @@ OBS_DECLARE_MODULE()
 OBS_MODULE_USE_DEFAULT_LOCALE("obs-zoom-connector", "en-US")
 
 bool obs_module_load(void) {
+    blog(LOG_INFO, "[Zoom to OBS] === TELEMETRY START ===");
+
+    // 1. Register the sources so they show up in OBS
     zoom_participant_info.id = "zoom_participant_source";
     zoom_participant_info.type = OBS_SOURCE_TYPE_INPUT;
     zoom_participant_info.output_flags = OBS_SOURCE_ASYNC_VIDEO;
@@ -282,6 +285,40 @@ bool obs_module_load(void) {
     obs_register_source(&zoom_participant_info);
     obs_register_source(&zoom_screenshare_info);
     obs_register_source(&zoom_gallery_info);
+    
+    blog(LOG_INFO, "[Zoom to OBS] Step 1: Sources Registered.");
+
+    // 2. Wake up the Zoom Engine
+    ZOOM_SDK_NAMESPACE::InitParam initParam;
+    initParam.strWebDomain = L"https://zoom.us";
+    
+    ZOOM_SDK_NAMESPACE::SDKError initErr = ZOOM_SDK_NAMESPACE::InitSDK(initParam);
+    blog(LOG_INFO, "[Zoom to OBS] Step 2: InitSDK Result Code: %d", initErr);
+    
+    if (initErr == ZOOM_SDK_NAMESPACE::SDKERR_SUCCESS) {
+        ZOOM_SDK_NAMESPACE::IAuthService* auth_service = nullptr;
+        ZOOM_SDK_NAMESPACE::SDKError serviceErr = ZOOM_SDK_NAMESPACE::CreateAuthService(&auth_service);
+        blog(LOG_INFO, "[Zoom to OBS] Step 3: CreateAuthService Result: %d", serviceErr);
+        
+        if (serviceErr == ZOOM_SDK_NAMESPACE::SDKERR_SUCCESS && auth_service) {
+            auth_service->SetEvent(&g_authListener);
+            
+            ZOOM_SDK_NAMESPACE::AuthContext authContext;
+            // Use the fresh JWT we just made
+            authContext.jwt_token = L"eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJhcHBLZXkiOiJzWUlqWGpqelFkMmJOQ2dYMXZKWU1BIiwiaWF0IjoxNzc0MDUwMDAwLCJleHAiOjE3NzY2NDIwMDAsInRva2VuRXhwIjoxNzc2NjQyMDAwfQ.FvUHWp548TiM3VP681SoGlJ09v-izkRqBVzpV0BKzgE"; 
+            
+            ZOOM_SDK_NAMESPACE::SDKError authCallErr = auth_service->SDKAuth(authContext);
+            blog(LOG_INFO, "[Zoom to OBS] Step 4: SDKAuth Call Sent. Result Code: %d", authCallErr);
+        } else {
+            blog(LOG_ERROR, "[Zoom to OBS] ERROR: Failed to create Auth Service!");
+        }
+    } else {
+        blog(LOG_ERROR, "[Zoom to OBS] ERROR: InitSDK Failed! Zoom cannot start.");
+    }
+
+    blog(LOG_INFO, "[Zoom to OBS] === TELEMETRY END ===");
+    return true;
+}
 
 // --- WAKE UP THE ZOOM ENGINE ---
     ZOOM_SDK_NAMESPACE::InitParam initParam;
