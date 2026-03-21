@@ -1,175 +1,87 @@
-#include <obs-module.h>
-#include <util/platform.h>
-#include <string>
-#include <windows.h>
-
-#include "zoom_sdk_def.h"
-#include "zoom_sdk_raw_data_def.h"
 #include "zoom_sdk.h"
-#include "auth_service_interface.h"
 #include "meeting_service_interface.h"
-#include "meeting_service_components/meeting_audio_interface.h"
-#include "meeting_service_components/meeting_participants_ctrl_interface.h"
-#include "meeting_service_components/meeting_recording_interface.h"
-#include "meeting_service_components/meeting_ui_ctrl_interface.h"
-#include "rawdata/rawdata_renderer_interface.h"
-#include "rawdata/zoom_rawdata_api.h"
+#include "auth_service_interface.h"
+#include "meeting_recording_interface.h"
+#include <iostream>
 
-static obs_source_t* g_participantSource = nullptr;
+using namespace ZOOMSDK;
 
-// --- VIDEO RENDERER ---
-class ZoomVideoCatcher : public ZOOM_SDK_NAMESPACE::IZoomSDKRendererDelegate {
+// --- AUTH LISTENER ---
+class ZoomAuthListener : public IAuthServiceEvent {
 public:
-    virtual void onRawDataFrameReceived(YUVRawDataI420* data) override {
-        if (!g_participantSource) return;
-        struct obs_source_frame obs_frame = {};
-        obs_frame.format = VIDEO_FORMAT_I420; 
-        obs_frame.width = data->GetStreamWidth();
-        obs_frame.height = data->GetStreamHeight();
-        obs_frame.data[0] = (uint8_t*)data->GetYBuffer();
-        obs_frame.data[1] = (uint8_t*)data->GetUBuffer();
-        obs_frame.data[2] = (uint8_t*)data->GetVBuffer();
-        obs_frame.linesize[0] = obs_frame.width;
-        obs_frame.linesize[1] = obs_frame.width / 2;
-        obs_frame.linesize[2] = obs_frame.width / 2;
-        obs_frame.timestamp = os_gettime_ns();
-        obs_source_output_video(g_participantSource, &obs_frame);
+    void onAuthenticationReturn(AuthResult ret) override {
+        std::cout << "Auth Return: " << ret << std::endl;
     }
-    virtual void onRawDataStatusChanged(RawDataStatus status) override {}
-    virtual void onRendererBeDestroyed() override {}
+    void onLoginReturnWithReason(LOGINSTATUS ret, IAccountInfo* pAccountInfo, LoginFailReason reason) override {
+        std::cout << "Login Return: " << ret << std::endl;
+    }
+    void onLogout() override {}
+    void onZoomIdentityExpired() override {}
+    void onZoomAuthIdentityExpired() override {}
+#if defined(WIN32)
+    void onNotificationServiceStatus(SDKNotificationServiceStatus status, SDKNotificationServiceError error) override {}
+#endif
 };
 
-static ZoomVideoCatcher g_videoCatcher;
-static ZOOM_SDK_NAMESPACE::IZoomSDKRenderer* g_videoRenderer = nullptr;
-
-// --- RECORDING CONTROLLER ---
-class ZoomRecordingListener : public ZOOM_SDK_NAMESPACE::IMeetingRecordingCtrlEvent {
+// --- MEETING LISTENER ---
+class ZoomMeetingListener : public IMeetingServiceEvent {
 public:
-    virtual void onRecordPrivilegeChanged(bool bCanRec) override {
-        if (bCanRec) {
-            ZOOM_SDK_NAMESPACE::IMeetingService* ms = nullptr;
-            ZOOM_SDK_NAMESPACE::CreateMeetingService(&ms);
-            if (ms && ms->GetMeetingRecordingController()) {
-                ms->GetMeetingRecordingController()->StartRawRecording();
-                ZOOM_SDK_NAMESPACE::createRenderer(&g_videoRenderer, &g_videoCatcher);
-                if (g_videoRenderer) {
-                    auto part_ctrl = ms->GetMeetingParticipantsController();
-                    if (part_ctrl && part_ctrl->GetParticipantsList()) {
-                        unsigned int first_user = part_ctrl->GetParticipantsList()->GetItem(0);
-                        g_videoRenderer->subscribe(first_user, ZOOM_SDK_NAMESPACE::RAW_DATA_TYPE_VIDEO);
-                    }
-                }
-            }
-        }
+    void onMeetingStatusChanged(MeetingStatus status, int iResult) override {
+        std::cout << "Meeting Status: " << status << std::endl;
     }
-    // Updated parameter types to match global SDK definitions
-    virtual void onRecordingStatus(ZOOM_SDK_NAMESPACE::RecordingStatus s) override {}
-    virtual void onCloudRecordingStatus(ZOOM_SDK_NAMESPACE::RecordingStatus s) override {}
-    virtual void onLocalRecordingPrivilegeRequestStatus(ZOOM_SDK_NAMESPACE::RequestLocalRecordingStatus s) override {}
-    virtual void onRequestCloudRecordingResponse(ZOOM_SDK_NAMESPACE::RequestStartCloudRecordingStatus s) override {}
-    virtual void onLocalRecordingPrivilegeRequested(ZOOM_SDK_NAMESPACE::IRequestLocalRecordingPrivilegeHandler* h) override {}
-    virtual void onStartCloudRecordingRequested(ZOOM_SDK_NAMESPACE::IRequestStartCloudRecordingHandler* h) override {}
-    virtual void onCloudRecordingStorageFull(time_t g) override {}
-    virtual void onEnableAndStartSmartRecordingRequested(ZOOM_SDK_NAMESPACE::IRequestEnableAndStartSmartRecordingHandler* h) override {}
-    virtual void onSmartRecordingEnableActionCallback(ZOOM_SDK_NAMESPACE::ISmartRecordingEnableActionHandler* h) override {}
-    virtual void onTranscodingStatusChanged(ZOOM_SDK_NAMESPACE::TranscodingStatus status) override {} 
+    void onMeetingStatisticsWarningNotification(StatisticsWarningType type) override {}
+    void onMeetingParameterNotification(const MeetingParameter* meeting_param) override {}
+    void onSuspendParticipantsActivities() override {}
+    void onAICompanionActiveChangeNotice(bool bActive) override {}
+    void onMeetingTopicChanged(const zchar_t* sTopic) override {}
+    void onMeetingFullToWatchLiveStream(const zchar_t* sLiveStreamUrl) override {}
+    void onUserNetworkStatusChanged(MeetingComponentType type, ConnectionQuality level, unsigned int userId, bool uplink) override {}
+#if defined(WIN32)
+    void onAppSignalPanelUpdated(IMeetingAppSignalHandler* pHandler) override {}
+#endif
 };
-static ZoomRecordingListener g_recordingListener;
 
-// --- MEETING SERVICE ---
-class ZoomMeetingListener : public ZOOM_SDK_NAMESPACE::IMeetingServiceEvent {
+// --- RECORDING LISTENER ---
+class ZoomRecordingListener : public IMeetingRecordingCtrlEvent {
 public:
-    virtual void onMeetingStatusChanged(ZOOM_SDK_NAMESPACE::MeetingStatus status, int iResult = 0) override {
-        if (status == ZOOM_SDK_NAMESPACE::MEETING_STATUS_INMEETING) {
-            ZOOM_SDK_NAMESPACE::IMeetingService* ms = nullptr;
-            ZOOM_SDK_NAMESPACE::CreateMeetingService(&ms);
-            if (ms && ms->GetMeetingRecordingController()) {
-                ms->GetMeetingRecordingController()->SetEvent(&g_recordingListener);
-                g_recordingListener.onRecordPrivilegeChanged(true);
-            }
-        }
-    }
-    virtual void onMeetingStatisticsWarningNotification(ZOOM_SDK_NAMESPACE::StatisticsWarningType t) override {}
-    virtual void onMeetingParameterNotification(const ZOOM_SDK_NAMESPACE::MeetingParameter* p) override {}
-    virtual void onSuspendParticipantsActivities() override {}
-    virtual void onAICompanionActiveChangeNotice(bool b) override {}
-    virtual void onMeetingTopicChanged(const zchar_t* s) override {}
-    virtual void onMeetingFullToWatchLiveStream(const zchar_t* s) override {}
-    virtual void onUserNetworkStatusChanged(ZOOM_SDK_NAMESPACE::MeetingComponentType t, ZOOM_SDK_NAMESPACE::ConnectionQuality l, unsigned int u, bool up) override {}
-    virtual void onMeetingConnectTerminalStatus(ZOOM_SDK_NAMESPACE::MeetingConnectTerminalStatus status) override {
-        // This parameter usually doesn't need the IMeetingServiceEvent:: prefix in this SDK build
-    }
+    void onRecordingStatus(RecordingStatus status) override {}
+    void onCloudRecordingStatus(RecordingStatus status) override {}
+    void onRecordPrivilegeChanged(bool bCanRec) override {}
+    void onLocalRecordingPrivilegeRequestStatus(RequestLocalRecordingStatus status) override {}
+    void onRequestCloudRecordingResponse(RequestStartCloudRecordingStatus status) override {}
+    void onLocalRecordingPrivilegeRequested(IRequestLocalRecordingPrivilegeHandler* handler) override {}
+    void onStartCloudRecordingRequested(IRequestStartCloudRecordingHandler* handler) override {}
+    void onCloudRecordingStorageFull(time_t gracePeriodDate) override {}
+    void onEnableAndStartSmartRecordingRequested(IRequestEnableAndStartSmartRecordingHandler* handler) override {}
+    void onSmartRecordingEnableActionCallback(ISmartRecordingEnableActionHandler* handler) override {}
+
+#if defined(WIN32)
+    void onRecording2MP4Done(bool bsuccess, int iResult, const zchar_t* szPath) override {}
+    void onRecording2MP4Processing(int iPercentage) override {}
+    void onCustomizedLocalRecordingSourceNotification(ICustomizedLocalRecordingLayoutHelper* layout_helper) override {}
+#endif
 };
-static ZoomMeetingListener g_meetingListener;
 
-// --- AUTH SERVICE ---
-class ZoomAuthListener : public ZOOM_SDK_NAMESPACE::IAuthServiceEvent {
-public:
-    virtual void onAuthenticationReturn(ZOOM_SDK_NAMESPACE::AuthResult ret) override {
-        if (ret == ZOOM_SDK_NAMESPACE::AUTHRET_SUCCESS) {
-            blog(LOG_INFO, "[Zoom] SDK Auth Success.");
-            ZOOM_SDK_NAMESPACE::IAuthService* auth = nullptr;
-            ZOOM_SDK_NAMESPACE::CreateAuthService(&auth);
-            if (auth) {
-                const zchar_t* ssoUrl = auth->GenerateSSOLoginWebURL(L"zoom");
-                if (ssoUrl) {
-                    ShellExecuteW(NULL, L"open", ssoUrl, NULL, NULL, SW_SHOWNORMAL);
-                }
-            }
-        }
-    }
+// Global Listener Instances
+ZoomAuthListener authListener;
+ZoomMeetingListener meetingListener;
+ZoomRecordingListener recordingListener;
 
-    virtual void onLoginReturnWithReason(ZOOM_SDK_NAMESPACE::LOGINSTATUS ret, ZOOM_SDK_NAMESPACE::IAccountInfo* p, ZOOM_SDK_NAMESPACE::LoginFailReason r) override {
-        if (ret == ZOOM_SDK_NAMESPACE::LOGIN_SUCCESS) {
-            blog(LOG_INFO, "[Zoom] Logged in as Host: %ls", p->GetDisplayName());
-            ZOOM_SDK_NAMESPACE::IMeetingService* ms = nullptr;
-            ZOOM_SDK_NAMESPACE::CreateMeetingService(&ms);
-            if (ms) {
-                ms->SetEvent(&g_meetingListener);
-                ZOOM_SDK_NAMESPACE::JoinParam jp;
-                jp.userType = ZOOM_SDK_NAMESPACE::SDK_UT_NORMALUSER; 
-                auto& pJoin = jp.param.normaluserJoin;
-                pJoin.meetingNumber = 7723013754ULL;
-                pJoin.userName = L"OBS Host Bot";
-                ms->Join(jp);
-            }
-        }
-    }
+extern "C" __declspec(dllexport) bool InitializeSDK(const char* jwt) {
+    InitParam initParam;
+    initParam.strWebDomain = _T("https://zoom.us");
+    
+    SDKError err = CreateSDKInst(&SDKInst);
+    if (err != SDKERR_SUCCESS) return false;
 
-    virtual void onLogout() override {}
-    virtual void onZoomIdentityExpired() override {}
-    virtual void onZoomAuthIdentityExpired() override {}
-    virtual void onNotificationServiceStatus(ZOOM_SDK_NAMESPACE::SDKNotificationServiceStatus s, ZOOM_SDK_NAMESPACE::SDKNotificationServiceError e) override {}
-};
-static ZoomAuthListener g_authListener;
+    err = SDKInst->InitSDK(initParam);
+    if (err != SDKERR_SUCCESS) return false;
 
-// --- OBS MODULE CORE ---
-OBS_DECLARE_MODULE()
-OBS_MODULE_USE_DEFAULT_LOCALE("obs-zoom-connector", "en-US")
+    IAuthService* pAuth = SDKInst->GetAuthService();
+    if (pAuth) pAuth->SetEvent(&authListener);
 
-bool obs_module_load(void) {
-    struct obs_source_info info = {};
-    info.id = "zoom_participant_source";
-    info.type = OBS_SOURCE_TYPE_INPUT;
-    info.output_flags = OBS_SOURCE_ASYNC_VIDEO;
-    info.get_name = [](void*) { return "Zoom Participant"; };
-    info.create = [](obs_data_t*, obs_source_t* s) { g_participantSource = s; return (void*)1; };
-    info.destroy = [](void*) { g_participantSource = nullptr; };
-    obs_register_source(&info);
+    IMeetingService* pMeeting = SDKInst->GetMeetingService();
+    if (pMeeting) pMeeting->SetEvent(&meetingListener);
 
-    ZOOM_SDK_NAMESPACE::InitParam ip;
-    ip.strWebDomain = L"https://zoom.us";
-    if (ZOOM_SDK_NAMESPACE::InitSDK(ip) == ZOOM_SDK_NAMESPACE::SDKERR_SUCCESS) {
-        ZOOM_SDK_NAMESPACE::IAuthService* auth = nullptr;
-        ZOOM_SDK_NAMESPACE::CreateAuthService(&auth);
-        if (auth) {
-            auth->SetEvent(&g_authListener);
-            ZOOM_SDK_NAMESPACE::AuthContext ctx;
-            ctx.jwt_token = L"eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJhcHBLZXkiOiJZNzNqelFSbVF4aWhoNFo3MnFSMnRnIiwiaWF0IjoxNzc0MDUwMDAwLCJleHAiOjE3NzY2NDIwMDAsInRva2VuRXhwIjoxNzc2NjQyMDAwLCJyb2xlIjoxLCJ1c2VyRW1haWwiOiJEYXZpZEBMZXRzRG9WaWRlby5jb20ifQ.1ldmzxzK-gdzWJkxr7KkkwnYq8qEnbMGVTJFihAhuEA";
-            auth->SDKAuth(ctx);
-        }
-    }
     return true;
 }
-
-void obs_module_unload(void) {}
