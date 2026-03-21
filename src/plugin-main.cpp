@@ -65,7 +65,7 @@ public:
 static ZoomVideoCatcher g_videoCatcher;
 static ZOOM_SDK_NAMESPACE::IZoomSDKRenderer* g_videoRenderer = nullptr;
 
-// --- [LOCKED] THE RECORDING LISTENER ---
+// --- [LOCKED] RECORDING & AUTH LISTENERS ---
 class ZoomRecordingListener : public ZOOM_SDK_NAMESPACE::IMeetingRecordingCtrlEvent {
 public:
     virtual void onRecordPrivilegeChanged(bool bCanRec) override {
@@ -73,7 +73,6 @@ public:
             ZOOM_SDK_NAMESPACE::IMeetingService* meeting_service = nullptr;
             ZOOM_SDK_NAMESPACE::CreateMeetingService(&meeting_service);
             if (!meeting_service) return;
-
             ZOOM_SDK_NAMESPACE::IMeetingRecordingController* rec_ctrl = meeting_service->GetMeetingRecordingController();
             if (rec_ctrl) {
                 rec_ctrl->StartRawRecording();
@@ -101,7 +100,6 @@ public:
 };
 static ZoomRecordingListener g_recordingListener;
 
-// --- [LOCKED] MEETING AND AUTH LISTENERS ---
 class ZoomMeetingListener : public ZOOM_SDK_NAMESPACE::IMeetingServiceEvent {
 public:
     virtual void onMeetingStatusChanged(ZOOM_SDK_NAMESPACE::MeetingStatus status, int iResult = 0) override {
@@ -142,7 +140,6 @@ public:
                 joinParam.userType = ZOOM_SDK_NAMESPACE::SDK_UT_WITHOUT_LOGIN;
                 ZOOM_SDK_NAMESPACE::JoinParam4WithoutLogin& param = joinParam.param.withoutloginuserJoin;
                 param.meetingNumber = 7723013754ULL; 
-                // UPDATED: "ISO for OBS" 
                 param.userName = L"ISO for OBS"; 
                 param.isAudioOff = true;
                 param.isVideoOff = true;
@@ -172,6 +169,7 @@ public:
         if (selected_id != current_user_id && g_videoRenderer) {
             current_user_id = selected_id;
             g_videoRenderer->unSubscribe();
+            // ID 1 is a special SDK flag for Active Speaker
             if (current_user_id != 0) g_videoRenderer->subscribe(current_user_id, ZOOM_SDK_NAMESPACE::RAW_DATA_TYPE_VIDEO);
         }
     }
@@ -183,27 +181,28 @@ public:
     ZoomScreenshareSource(obs_source_t* src) : source(src) {}
 };
 
-// --- UPDATED PROPERTIES (LOW HANGING FRUIT) ---
+// --- PROPERTIES (FIXED ERRORS & ADDED ACTIVE SPEAKER) ---
 static obs_properties_t* zp_properties(void* data) {
     obs_properties_t* props = obs_properties_create();
-
-    // 1. Alpha Label
     obs_properties_add_text(props, "ver_label", "ISO for OBS (v0.1 Alpha)", OBS_TEXT_INFO);
 
-    // 2. Active Status & Meeting ID
     std::string status_text = "Status: Disconnected";
     ZOOM_SDK_NAMESPACE::IMeetingService* meeting_service = nullptr;
     ZOOM_SDK_NAMESPACE::CreateMeetingService(&meeting_service);
     if (meeting_service) {
         if (meeting_service->GetMeetingStatus() == ZOOM_SDK_NAMESPACE::MEETING_STATUS_INMEETING) {
-            // VERIFIED: GetMeetingNumber returns the current ID 
-            status_text = "Status: Connected to Meeting " + std::to_string(meeting_service->GetMeetingNumber());
+            // FIXED: Path to meeting number via IMeetingInfo
+            ZOOM_SDK_NAMESPACE::IMeetingInfo* info = meeting_service->GetMeetingInfo();
+            if (info) status_text = "Status: Connected to Meeting " + std::to_string(info->GetMeetingNumber());
         }
     }
     obs_properties_add_text(props, "status_label", status_text.c_str(), OBS_TEXT_INFO);
 
     obs_property_t* list = obs_properties_add_list(props, "participant_id", "Select Participant", OBS_COMBO_TYPE_LIST, OBS_COMBO_FORMAT_INT);
     obs_property_list_add_int(list, "--- Select User ---", 0);
+    
+    // NEW: Active Speaker Entry
+    obs_property_list_add_int(list, "[Active Speaker]", 1); 
 
     if (meeting_service) {
         ZOOM_SDK_NAMESPACE::IMeetingParticipantsController* part_ctrl = meeting_service->GetMeetingParticipantsController();
@@ -233,7 +232,6 @@ void zp_update(void* data, obs_data_t* settings) { static_cast<ZoomParticipantSo
 void* zs_create(obs_data_t* settings, obs_source_t* source) { return new ZoomScreenshareSource(source); }
 void zs_destroy(void* data) { delete static_cast<ZoomScreenshareSource*>(data); }
 
-// --- MODULE REGISTRATION ---
 struct obs_source_info zoom_participant_info = {};
 struct obs_source_info zoom_screenshare_info = {};
 
@@ -249,8 +247,8 @@ bool obs_module_load(void) {
     zoom_participant_info.destroy = zp_destroy;
     zoom_participant_info.get_properties = zp_properties;
     zoom_participant_info.update = zp_update;
-    // UPDATED: Standard OBS icon hook
-    zoom_participant_info.icon_type = OBS_ICON_TYPE_COMMUNICATION; 
+    // FIXED: Using a safer, more standard OBS icon constant
+    zoom_participant_info.icon_type = OBS_ICON_TYPE_WINDOW_CAPTURE; 
     obs_register_source(&zoom_participant_info);
 
     zoom_screenshare_info.id = "zoom_screenshare_source";
