@@ -247,8 +247,8 @@ bool obs_module_load(void) {
     zoom_participant_info.destroy = zp_destroy;
     zoom_participant_info.get_properties = zp_properties;
     zoom_participant_info.update = zp_update;
-    // FIXED: Using a safer, more standard OBS icon constant
-    zoom_participant_info.icon_type = OBS_ICON_TYPE_WINDOW_CAPTURE; 
+   // UPDATED: Tell OBS to use the custom PNG in the data folder
+    zoom_participant_info.icon_type = OBS_ICON_TYPE_CUSTOM; 
     obs_register_source(&zoom_participant_info);
 
     zoom_screenshare_info.id = "zoom_screenshare_source";
@@ -257,7 +257,8 @@ bool obs_module_load(void) {
     zoom_screenshare_info.get_name = [](void*) { return "Zoom Screenshare"; };
     zoom_screenshare_info.create = zs_create;
     zoom_screenshare_info.destroy = zs_destroy;
-    zoom_screenshare_info.icon_type = OBS_ICON_TYPE_DESKTOP_CAPTURE;
+// UPDATED: Tell OBS to use the custom PNG (if provided)
+    zoom_screenshare_info.icon_type = OBS_ICON_TYPE_CUSTOM;
     obs_register_source(&zoom_screenshare_info);
 
     ZOOM_SDK_NAMESPACE::InitParam initParam;
