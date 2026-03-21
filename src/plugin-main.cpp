@@ -206,7 +206,7 @@ bool obs_module_load(void) {
         if (sErr == ZOOM_SDK_NAMESPACE::SDKERR_SUCCESS && as) {
             as->SetEvent(&g_authListener);
             ZOOM_SDK_NAMESPACE::AuthContext ac;
-            ac.jwt_token = L"eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJhcHBLZXkiOiJzWUlqWGpqelFkMmJOQ2dYMXZKWU1BIiwiaWF0IjoxNzc0MDUwMDAwLCJleHAiOjE3NzY2NDIwMDAsInRva2VuRXhwIjoxNzc2NjQyMDAwfQ.FvUHWp548TiM3VP681SoGlJ09v-izkRqBVzpV0BKzgE";
+            ac.jwt_token = L"eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJhcHBLZXkiOiJzWUlqWGpqelFkMmJOQ2dYMXZKWU1BIiwiaWF0IjoxNzc0MDUwMDAwLCJleHAiOjE3NzY2NDIwMDAsInRva2VuRXhwIjoxNzc2NjQyMDAwfQ.DDyNNHyQ1Gw3_U6q18zUQbWY0NFkfxoqtH_N52U3XxE";
             ZOOM_SDK_NAMESPACE::SDKError aErr = as->SDKAuth(ac);
             blog(LOG_INFO, "[Zoom to OBS] Step 3: SDKAuth Call Sent. Result: %d", aErr);
         }
