@@ -18,24 +18,25 @@ ZoomMeetingListener* meetingListener = nullptr;
 IAuthService* g_pAuthService = nullptr;
 IMeetingService* g_pMeetingService = nullptr;
 
-// --- 2. THE LOGIC TO JOIN YOUR MEETING ---
+// --- 2. JOIN MEETING (REVISIONS BASED ON YOUR HEADER) ---
 void JoinMeeting() {
     if (!g_pMeetingService) return;
 
-    // Meeting: 772 301 3754
     JoinParam joinParam;
-    memset(&joinParam, 0, sizeof(JoinParam)); // Clear memory to prevent garbage data
+    // The header shows a constructor exists, but memset is safer for unions
+    memset(&joinParam, 0, sizeof(JoinParam)); 
     
     joinParam.userType = SDK_UT_WITHOUT_LOGIN;
-    
-    // Using the direct pointer assignment to satisfy the compiler
-    joinParam.param.without_login_param.meetingNumber = 7723013754;
-    joinParam.param.without_login_param.userName = L"OBS Connector";
-    joinParam.param.without_login_param.psw = L""; 
-    joinParam.param.without_login_param.vanityID = nullptr;
+
+    // Based on your meeting_service_interface.h:
+    // The union member is 'withoutloginuserJoin'
+    joinParam.param.withoutloginuserJoin.meetingNumber = 7723013754;
+    joinParam.param.withoutloginuserJoin.userName = L"OBS Connector";
+    joinParam.param.withoutloginuserJoin.psw = L""; 
+    joinParam.param.withoutloginuserJoin.vanityID = nullptr;
 
     SDKError err = g_pMeetingService->Join(joinParam);
-    blog(LOG_INFO, "[Zoom] Join Meeting Attempt: %d", err);
+    blog(LOG_INFO, "[Zoom] Join Meeting Attempt for 7723013754: %d", err);
 }
 
 // --- 3. LISTENERS ---
@@ -60,7 +61,7 @@ public:
 class ZoomMeetingListener : public IMeetingServiceEvent {
 public:
     void onMeetingStatusChanged(MeetingStatus status, int iResult) override {
-        blog(LOG_INFO, "[Zoom] Meeting Status Changed: %d", status);
+        blog(LOG_INFO, "[Zoom] Meeting Status Changed: %d. (3 = In Meeting)", status);
     }
     void onMeetingStatisticsWarningNotification(StatisticsWarningType type) override {}
     void onMeetingParameterNotification(const MeetingParameter* p) override {}
@@ -111,9 +112,4 @@ bool obs_module_load(void) {
             }
 
             AuthContext authContext;
-            authContext.jwt_token = _T("eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJhcHBLZXkiOiJZNzNqelFSbVF4aWhoNFo3MnFSMnRnIiwiaWF0IjoxNzc0MDUwMDAwLCJleHAiOjE3NzY2NDIwMDAsInRva2VuRXhwIjoxNzc2NjQyMDAwLCJyb2xlIjoxLCJ1c2VyRW1haWwiOiJEYXZpZEBMZXRzRG9WaWRlby5jb20ifQ.1ldmzxzK-gdzWJkxr7KkkwnYq8qEnbMGVTJFihAhuEA");
-            g_pAuthService->SDKAuth(authContext);
-        }
-    }
-    return true;
-}
+            authContext.jwt_token = _T("eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJhcHBLZXkiOiJZNzNqelFSbVF4aWhoNFo3MnFSMnRnIiwiaWF0IjoxNzc0MDUwMDAwLCJleHAiOjE3NzY2NDIwMD
