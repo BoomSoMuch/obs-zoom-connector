@@ -14,23 +14,35 @@ static obs_source_t* g_participantSource = nullptr;
 // --- AUTH LISTENER ---
 class ZoomAuthListener : public ZOOM_SDK_NAMESPACE::IAuthServiceEvent {
 public:
-    virtual void onAuthenticationReturn(ZOOM_SDK_NAMESPACE::AuthResult ret) override {
-        if (ret == ZOOM_SDK_NAMESPACE::AUTHRET_SUCCESS) {
-            blog(LOG_INFO, "[Zoom] SDK Auth Success. Launching SSO Login...");
+// 1. Inside your ZoomAuthListener
+virtual void onLoginReturnWithReason(ZOOM_SDK_NAMESPACE::LOGINSTATUS ret, ZOOM_SDK_NAMESPACE::IAccountInfo* pAccountInfo, ZOOM_SDK_NAMESPACE::LoginFailReason reason) override {
+    if (ret == ZOOM_SDK_NAMESPACE::LOGIN_SUCCESS) {
+        blog(LOG_INFO, "[Zoom] Successfully logged in as Host: %ls", pAccountInfo->GetDisplayName());
+
+        // 2. Now that we are LOGGED IN, we join the meeting. 
+        // Because the SDK is authenticated as YOU, it will bypass the waiting room.
+        ZOOM_SDK_NAMESPACE::IMeetingService* ms = nullptr;
+        ZOOM_SDK_NAMESPACE::CreateMeetingService(&ms);
+        if (ms) {
+            ms->SetEvent(&g_meetingListener);
             
-            ZOOM_SDK_NAMESPACE::IAuthService* auth = nullptr;
-            ZOOM_SDK_NAMESPACE::CreateAuthService(&auth);
-            if (auth) {
-                // Change "your-company" to your Zoom vanity URL prefix if you have one, 
-                // otherwise "zoom" often works for standard accounts.
-                const zchar_t* ssoUrl = auth->GenerateSSOLoginWebURL(L"zoom");
-                if (ssoUrl) {
-                    blog(LOG_INFO, "[Zoom] Opening browser for login...");
-                    ShellExecuteW(NULL, L"open", ssoUrl, NULL, NULL, SW_SHOWNORMAL);
-                }
+            // Note: We use JoinParam, but because we are logged in, 
+            // we don't need to provide a ZAK token.
+            ZOOM_SDK_NAMESPACE::JoinParam jp;
+            jp.userType = ZOOM_SDK_NAMESPACE::SDK_UT_NORMALUSER; 
+            auto& p = jp.param.normaluserJoin;
+            p.meetingNumber = 7723013754ULL;
+            p.userName = L"OBS Host Bot";
+            
+            SDKError err = ms->Join(jp);
+            if (err != SDKERR_SUCCESS) {
+                blog(LOG_ERROR, "[Zoom] Join failed with error code: %d", err);
             }
         }
+    } else if (ret == ZOOM_SDK_NAMESPACE::LOGIN_FAILED) {
+        blog(LOG_ERROR, "[Zoom] Login failed. Reason code: %d", reason);
     }
+}
 
     virtual void onLoginReturnWithReason(ZOOM_SDK_NAMESPACE::LOGINSTATUS ret, ZOOM_SDK_NAMESPACE::IAccountInfo* p, ZOOM_SDK_NAMESPACE::LoginFailReason r) override {
         if (ret == ZOOM_SDK_NAMESPACE::LOGIN_SUCCESS) {
