@@ -21,11 +21,11 @@
 #include "rawdata/rawdata_renderer_interface.h"
 #include "rawdata/zoom_rawdata_api.h"
 
-// --- THE OBS VISUAL TARGET ---
+// --- [LOCKED] OBS VISUAL TARGET ---
 static obs_source_t* g_participantSource = nullptr;
 static uint64_t g_next_timestamp = 0;
 
-// --- THE ZOOM VIDEO CATCHER ---
+// --- [LOCKED] THE ZOOM VIDEO CATCHER ---
 class ZoomVideoCatcher : public ZOOM_SDK_NAMESPACE::IZoomSDKRendererDelegate {
 public:
     virtual void onRawDataFrameReceived(YUVRawDataI420* data) override {
@@ -69,7 +69,7 @@ public:
 static ZoomVideoCatcher g_videoCatcher;
 static ZOOM_SDK_NAMESPACE::IZoomSDKRenderer* g_videoRenderer = nullptr;
 
-// --- THE RECORDING WALKIE-TALKIE ---
+// --- [LOCKED] THE RECORDING WALKIE-TALKIE ---
 class ZoomRecordingListener : public ZOOM_SDK_NAMESPACE::IMeetingRecordingCtrlEvent {
 public:
     virtual void onRecordPrivilegeChanged(bool bCanRec) override {
@@ -124,7 +124,7 @@ public:
 };
 static ZoomRecordingListener g_recordingListener;
 
-// --- THE ZOOM MEETING WALKIE-TALKIE ---
+// --- [LOCKED] THE ZOOM MEETING WALKIE-TALKIE ---
 class ZoomMeetingListener : public ZOOM_SDK_NAMESPACE::IMeetingServiceEvent {
 public:
     virtual void onMeetingStatusChanged(ZOOM_SDK_NAMESPACE::MeetingStatus status, int iResult = 0) override {
@@ -137,7 +137,6 @@ public:
                 ZOOM_SDK_NAMESPACE::IMeetingRecordingController* rec_ctrl = meeting_service->GetMeetingRecordingController();
                 if (rec_ctrl) {
                     rec_ctrl->SetEvent(&g_recordingListener);
-                    // NEW: Since we are joining with a Role 1 JWT, we "Auto-Force" the recording permission check
                     g_recordingListener.onRecordPrivilegeChanged(true);
                 }
             }
@@ -156,7 +155,7 @@ public:
 };
 static ZoomMeetingListener g_meetingListener;
 
-// --- THE ZOOM AUTH LISTENER ---
+// --- [LOCKED] THE ZOOM AUTH LISTENER ---
 class ZoomAuthListener : public ZOOM_SDK_NAMESPACE::IAuthServiceEvent {
 public:
     virtual void onAuthenticationReturn(ZOOM_SDK_NAMESPACE::AuthResult ret) override {
@@ -212,14 +211,12 @@ public:
     }
 };
 
-void* zg_create(obs_data_t* settings, obs_source_t* source) { return new ZoomSource(source, "Gallery"); }
 void* zp_create(obs_data_t* settings, obs_source_t* source) { return new ZoomSource(source, "Participant"); }
 void* zs_create(obs_data_t* settings, obs_source_t* source) { return new ZoomSource(source, "Screenshare"); }
 void z_destroy(void* data) { delete static_cast<ZoomSource*>(data); }
 
 struct obs_source_info zoom_participant_info = {};
 struct obs_source_info zoom_screenshare_info = {};
-struct obs_source_info zoom_gallery_info = {};
 
 OBS_DECLARE_MODULE()
 OBS_MODULE_USE_DEFAULT_LOCALE("obs-zoom-connector", "en-US")
@@ -239,26 +236,19 @@ bool obs_module_load(void) {
     zoom_screenshare_info.create = zs_create;
     zoom_screenshare_info.destroy = z_destroy;
 
-    zoom_gallery_info.id = "zoom_gallery_source";
-    zoom_gallery_info.type = OBS_SOURCE_TYPE_INPUT;
-    zoom_gallery_info.output_flags = OBS_SOURCE_ASYNC_VIDEO; 
-    zoom_gallery_info.get_name = [](void*) { return "Zoom Gallery"; };
-    zoom_gallery_info.create = zg_create;
-    zoom_gallery_info.destroy = z_destroy;
-
     obs_register_source(&zoom_participant_info);
     obs_register_source(&zoom_screenshare_info);
-    obs_register_source(&zoom_gallery_info);
 
     ZOOM_SDK_NAMESPACE::InitParam initParam;
     initParam.strWebDomain = L"https://zoom.us";
+    // [LOCKED FLAG] Required for video pipes
+    initParam.rawdataOpts.enableRawdataIntermediateMode = true; 
     
     if (ZOOM_SDK_NAMESPACE::InitSDK(initParam) == ZOOM_SDK_NAMESPACE::SDKERR_SUCCESS) {
         ZOOM_SDK_NAMESPACE::IAuthService* auth_service = nullptr;
         if (ZOOM_SDK_NAMESPACE::CreateAuthService(&auth_service) == ZOOM_SDK_NAMESPACE::SDKERR_SUCCESS && auth_service) {
             auth_service->SetEvent(&g_authListener);
             ZOOM_SDK_NAMESPACE::AuthContext authContext;
-            // PASTE YOUR ROLE 1 JWT HERE
             authContext.jwt_token = L"eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJhcHBLZXkiOiJZNzNqelFSbVF4aWhoNFo3MnFSMnRnIiwiaWF0IjoxNzc0MDUwMDAwLCJleHAiOjE3NzY2NDIwMDAsInRva2VuRXhwIjoxNzc2NjQyMDAwLCJyb2xlIjoxLCJ1c2VyRW1haWwiOiJEYXZpZEBMZXRzRG9WaWRlby5jb20ifQ.1ldmzxzK-gdzWJkxr7KkkwnYq8qEnbMGVTJFihAhuEA"; 
             auth_service->SDKAuth(authContext);
         }
