@@ -155,27 +155,31 @@ public:
 };
 static ZoomMeetingListener g_meetingListener;
 
-// --- THE ZOOM AUTH LISTENER (SWAPPED TO BROWSER LOGIN) ---
+// --- FIXED ZOOM AUTH LISTENER (MATCHING SDK 6.7.5) ---
 class ZoomAuthListener : public ZOOM_SDK_NAMESPACE::IAuthServiceEvent {
 public:
     virtual void onAuthenticationReturn(ZOOM_SDK_NAMESPACE::AuthResult ret) override {
         if (ret == ZOOM_SDK_NAMESPACE::AUTHRET_SUCCESS) {
-            blog(LOG_INFO, "[Zoom to OBS] Auth Successful. Triggering Browser Login...");
+            blog(LOG_INFO, "[Zoom to OBS] SDK Auth Success. Launching Browser Login...");
             
             ZOOM_SDK_NAMESPACE::IAuthService* auth_service = nullptr;
             ZOOM_SDK_NAMESPACE::CreateAuthService(&auth_service);
             
             if (auth_service) {
-                // Initiates Browser-based Login
-                auth_service->Login(ZOOM_SDK_NAMESPACE::LOGIN_TYPE_SSO, nullptr);
+                // FIXED: In SDK 6.7.5, we use LoginWithEmail or SSO logic via specific params.
+                // For SSO/Browser flow, we use the SDK's internal helper.
+                ZOOM_SDK_NAMESPACE::LoginParam loginParam;
+                loginParam.ut = ZOOM_SDK_NAMESPACE::LoginType_SSO; // Fixed constant naming
+                loginParam.param.ssoLogin.ssoToken = nullptr; // Triggers browser launch
+                
+                auth_service->Login(loginParam); // Fixed call signature
             }
         }
     }
 
-    // Called after browser login completes successfully
     virtual void onLoginReturnWithReason(ZOOM_SDK_NAMESPACE::LOGINSTATUS ret, ZOOM_SDK_NAMESPACE::IAccountInfo* pAccountInfo, ZOOM_SDK_NAMESPACE::LoginFailReason reason) override {
-        if (ret == ZOOM_SDK_NAMESPACE::LOGIN_IDLE && pAccountInfo) {
-            blog(LOG_INFO, "[Zoom to OBS] Browser Login Successful! Joining meeting...");
+        if (ret == ZOOM_SDK_NAMESPACE::LOGIN_SUCCESS) { // Fixed status constant
+            blog(LOG_INFO, "[Zoom to OBS] Browser Login Success! Joining meeting...");
             
             ZOOM_SDK_NAMESPACE::IMeetingService* meeting_service = nullptr;
             ZOOM_SDK_NAMESPACE::CreateMeetingService(&meeting_service);
