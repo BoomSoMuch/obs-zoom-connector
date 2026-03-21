@@ -3,7 +3,10 @@
 #include <tchar.h>
 #include <iostream>
 
-// Zoom SDK Headers - Order and pathing is critical
+// OBS Header - Mandatory for plugin recognition
+#include <obs-module.h>
+
+// Zoom SDK Headers
 #include "zoom_sdk.h"
 #include "auth_service_interface.h"
 #include "meeting_service_interface.h"
@@ -11,84 +14,123 @@
 
 using namespace ZOOMSDK;
 
-// --- AUTH LISTENER ---
+// --- 1. ZOOM LISTENERS ---
+
 class ZoomAuthListener : public IAuthServiceEvent {
 public:
-    void onAuthenticationReturn(AuthResult ret) override { std::cout << "Auth Status: " << ret << std::endl; }
-    void onLoginReturnWithReason(LOGINSTATUS ret, IAccountInfo* pAccountInfo, LoginFailReason reason) override {}
+    void onAuthenticationReturn(AuthResult ret) override { std::cout << "Auth: " << ret << std::endl; }
+    void onLoginReturnWithReason(LOGINSTATUS ret, IAccountInfo* p, LoginFailReason r) override {}
     void onLogout() override {}
     void onZoomIdentityExpired() override {}
     void onZoomAuthIdentityExpired() override {}
 #if defined(WIN32)
-    void onNotificationServiceStatus(SDKNotificationServiceStatus status, SDKNotificationServiceError error) override {}
+    void onNotificationServiceStatus(SDKNotificationServiceStatus s, SDKNotificationServiceError e) override {}
 #endif
 };
 
-// --- MEETING LISTENER ---
 class ZoomMeetingListener : public IMeetingServiceEvent {
 public:
-    void onMeetingStatusChanged(MeetingStatus status, int iResult) override { std::cout << "Meeting: " << status << std::endl; }
+    void onMeetingStatusChanged(MeetingStatus status, int iResult) override {}
     void onMeetingStatisticsWarningNotification(StatisticsWarningType type) override {}
-    void onMeetingParameterNotification(const MeetingParameter* meeting_param) override {}
+    void onMeetingParameterNotification(const MeetingParameter* p) override {}
     void onSuspendParticipantsActivities() override {}
-    void onAICompanionActiveChangeNotice(bool bActive) override {}
-    void onMeetingTopicChanged(const zchar_t* sTopic) override {}
-    void onMeetingFullToWatchLiveStream(const zchar_t* sLiveStreamUrl) override {}
-    void onUserNetworkStatusChanged(MeetingComponentType type, ConnectionQuality level, unsigned int userId, bool uplink) override {}
+    void onAICompanionActiveChangeNotice(bool b) override {}
+    void onMeetingTopicChanged(const zchar_t* s) override {}
+    void onMeetingFullToWatchLiveStream(const zchar_t* s) override {}
+    void onUserNetworkStatusChanged(MeetingComponentType t, ConnectionQuality l, unsigned int u, bool up) override {}
 #if defined(WIN32)
-    void onAppSignalPanelUpdated(IMeetingAppSignalHandler* pHandler) override {}
+    void onAppSignalPanelUpdated(IMeetingAppSignalHandler* p) override {}
 #endif
 };
 
-// --- RECORDING LISTENER ---
 class ZoomRecordingListener : public IMeetingRecordingCtrlEvent {
 public:
-    // Core Overrides
-    void onRecordingStatus(RecordingStatus status) override {}
-    void onCloudRecordingStatus(RecordingStatus status) override {}
-    void onRecordPrivilegeChanged(bool bCanRec) override {}
-    void onLocalRecordingPrivilegeRequestStatus(RequestLocalRecordingStatus status) override {}
-    void onRequestCloudRecordingResponse(RequestStartCloudRecordingStatus status) override {}
-    void onLocalRecordingPrivilegeRequested(IRequestLocalRecordingPrivilegeHandler* handler) override {}
-    void onStartCloudRecordingRequested(IRequestStartCloudRecordingHandler* handler) override {}
-    void onCloudRecordingStorageFull(time_t gracePeriodDate) override {}
-    
-    // Smart Recording Overrides (Found in your latest file)
-    void onEnableAndStartSmartRecordingRequested(IRequestEnableAndStartSmartRecordingHandler* handler) override {}
-    void onSmartRecordingEnableActionCallback(ISmartRecordingEnableActionHandler* handler) override {}
-
+    void onRecordingStatus(RecordingStatus s) override {}
+    void onCloudRecordingStatus(RecordingStatus s) override {}
+    void onRecordPrivilegeChanged(bool b) override {}
+    void onLocalRecordingPrivilegeRequestStatus(RequestLocalRecordingStatus s) override {}
+    void onRequestCloudRecordingResponse(RequestStartCloudRecordingStatus s) override {}
+    void onLocalRecordingPrivilegeRequested(IRequestLocalRecordingPrivilegeHandler* h) override {}
+    void onStartCloudRecordingRequested(IRequestStartCloudRecordingHandler* h) override {}
+    void onCloudRecordingStorageFull(time_t g) override {}
+    void onEnableAndStartSmartRecordingRequested(IRequestEnableAndStartSmartRecordingHandler* h) override {}
+    void onSmartRecordingEnableActionCallback(ISmartRecordingEnableActionHandler* h) override {}
 #if defined(WIN32)
-    // Windows Transcoding Overrides
-    void onRecording2MP4Done(bool bsuccess, int iResult, const zchar_t* szPath) override {}
-    void onRecording2MP4Processing(int iPercentage) override {}
-    void onCustomizedLocalRecordingSourceNotification(ICustomizedLocalRecordingLayoutHelper* layout_helper) override {}
+    void onRecording2MP4Done(bool b, int i, const zchar_t* s) override {}
+    void onRecording2MP4Processing(int i) override {}
+    void onCustomizedLocalRecordingSourceNotification(ICustomizedLocalRecordingLayoutHelper* l) override {}
 #endif
 };
 
-// Global Service Pointers and Listeners
+// --- 2. GLOBAL INSTANCES ---
 ZoomAuthListener authListener;
 ZoomMeetingListener meetingListener;
-ZoomRecordingListener recordingListener;
-
 IAuthService* g_pAuthService = nullptr;
 IMeetingService* g_pMeetingService = nullptr;
+
+// --- 3. OBS SOURCE DEFINITIONS ---
+// These structs tell OBS that "zoom_participant_source", etc. exist.
+
+static const char* zoom_participant_get_name(void* unused) { return "Zoom Participant"; }
+static void* zoom_participant_create(obs_data_t* settings, obs_source_t* source) { return (void*)1; }
+static void zoom_participant_destroy(void* data) {}
+
+struct obs_source_info zoom_participant_info = {
+    .id = "zoom_participant_source",
+    .type = OBS_SOURCE_TYPE_INPUT,
+    .output_flags = OBS_SOURCE_VIDEO,
+    .get_name = zoom_participant_get_name,
+    .create = zoom_participant_create,
+    .destroy = zoom_participant_destroy,
+};
+
+struct obs_source_info zoom_gallery_info = {
+    .id = "zoom_gallery_source",
+    .type = OBS_SOURCE_TYPE_INPUT,
+    .output_flags = OBS_SOURCE_VIDEO,
+    .get_name = [](void*) { return "Zoom Gallery"; },
+    .create = [](obs_data_t* s, obs_source_t* src) { return (void*)1; },
+    .destroy = [](void* d) {},
+};
+
+struct obs_source_info zoom_screenshare_info = {
+    .id = "zoom_screenshare_source",
+    .type = OBS_SOURCE_TYPE_INPUT,
+    .output_flags = OBS_SOURCE_VIDEO,
+    .get_name = [](void*) { return "Zoom Screenshare"; },
+    .create = [](obs_data_t* s, obs_source_t* src) { return (void*)1; },
+    .destroy = [](void* d) {},
+};
+
+// --- 4. OBS MODULE ENTRY POINTS ---
+
+OBS_DECLARE_MODULE()
+OBS_MODULE_USE_DEFAULT_LOCALE("obs-zoom-connector", "en-US")
+
+bool obs_module_load(void) {
+    // Register the sources so they are no longer "Red" in OBS
+    obs_register_source(&zoom_participant_info);
+    obs_register_source(&zoom_gallery_info);
+    obs_register_source(&zoom_screenshare_info);
+
+    blog(LOG_INFO, "Zoom Connector: Plugin Loaded and Sources Registered");
+    return true;
+}
+
+// --- 5. SDK INITIALIZATION LOGIC ---
 
 extern "C" __declspec(dllexport) bool InitializeSDK(const char* jwt) {
     InitParam initParam;
     initParam.strWebDomain = _T("https://zoom.us");
     
-    // 1. Direct call to global Init (as per your zoom_sdk.h)
     SDKError err = InitSDK(initParam);
     if (err != SDKERR_SUCCESS) return false;
 
-    // 2. Create services using global factory functions
-    err = CreateAuthService(&g_pAuthService);
-    if (err == SDKERR_SUCCESS && g_pAuthService) {
+    if (CreateAuthService(&g_pAuthService) == SDKERR_SUCCESS) {
         g_pAuthService->SetEvent(&authListener);
     }
 
-    err = CreateMeetingService(&g_pMeetingService);
-    if (err == SDKERR_SUCCESS && g_pMeetingService) {
+    if (CreateMeetingService(&g_pMeetingService) == SDKERR_SUCCESS) {
         g_pMeetingService->SetEvent(&meetingListener);
     }
 
