@@ -21,11 +21,11 @@
 #include "rawdata/rawdata_renderer_interface.h"
 #include "rawdata/zoom_rawdata_api.h"
 
-// --- THE OBS VISUAL TARGET ---
+// --- [LOCKED] THE OBS VISUAL TARGET ---
 static obs_source_t* g_participantSource = nullptr;
 static uint64_t g_next_timestamp = 0;
 
-// --- THE ZOOM VIDEO CATCHER ---
+// --- [LOCKED] THE ZOOM VIDEO CATCHER ---
 class ZoomVideoCatcher : public ZOOM_SDK_NAMESPACE::IZoomSDKRendererDelegate {
 public:
     virtual void onRawDataFrameReceived(YUVRawDataI420* data) override {
@@ -69,7 +69,7 @@ public:
 static ZoomVideoCatcher g_videoCatcher;
 static ZOOM_SDK_NAMESPACE::IZoomSDKRenderer* g_videoRenderer = nullptr;
 
-// --- THE RECORDING WALKIE-TALKIE ---
+// --- [LOCKED] THE RECORDING WALKIE-TALKIE ---
 class ZoomRecordingListener : public ZOOM_SDK_NAMESPACE::IMeetingRecordingCtrlEvent {
 public:
     virtual void onRecordPrivilegeChanged(bool bCanRec) override {
@@ -124,7 +124,7 @@ public:
 };
 static ZoomRecordingListener g_recordingListener;
 
-// --- THE ZOOM MEETING WALKIE-TALKIE ---
+// --- [LOCKED] THE ZOOM MEETING WALKIE-TALKIE ---
 class ZoomMeetingListener : public ZOOM_SDK_NAMESPACE::IMeetingServiceEvent {
 public:
     virtual void onMeetingStatusChanged(ZOOM_SDK_NAMESPACE::MeetingStatus status, int iResult = 0) override {
@@ -137,7 +137,6 @@ public:
                 ZOOM_SDK_NAMESPACE::IMeetingRecordingController* rec_ctrl = meeting_service->GetMeetingRecordingController();
                 if (rec_ctrl) {
                     rec_ctrl->SetEvent(&g_recordingListener);
-                    // NEW: Since we are joining with a Role 1 JWT, we "Auto-Force" the recording permission check
                     g_recordingListener.onRecordPrivilegeChanged(true);
                 }
             }
@@ -156,11 +155,28 @@ public:
 };
 static ZoomMeetingListener g_meetingListener;
 
-// --- THE ZOOM AUTH LISTENER ---
+// --- THE ZOOM AUTH LISTENER (SWAPPED TO BROWSER LOGIN) ---
 class ZoomAuthListener : public ZOOM_SDK_NAMESPACE::IAuthServiceEvent {
 public:
     virtual void onAuthenticationReturn(ZOOM_SDK_NAMESPACE::AuthResult ret) override {
         if (ret == ZOOM_SDK_NAMESPACE::AUTHRET_SUCCESS) {
+            blog(LOG_INFO, "[Zoom to OBS] Auth Successful. Triggering Browser Login...");
+            
+            ZOOM_SDK_NAMESPACE::IAuthService* auth_service = nullptr;
+            ZOOM_SDK_NAMESPACE::CreateAuthService(&auth_service);
+            
+            if (auth_service) {
+                // Initiates Browser-based Login
+                auth_service->Login(ZOOM_SDK_NAMESPACE::LOGIN_TYPE_SSO, nullptr);
+            }
+        }
+    }
+
+    // Called after browser login completes successfully
+    virtual void onLoginReturnWithReason(ZOOM_SDK_NAMESPACE::LOGINSTATUS ret, ZOOM_SDK_NAMESPACE::IAccountInfo* pAccountInfo, ZOOM_SDK_NAMESPACE::LoginFailReason reason) override {
+        if (ret == ZOOM_SDK_NAMESPACE::LOGIN_IDLE && pAccountInfo) {
+            blog(LOG_INFO, "[Zoom to OBS] Browser Login Successful! Joining meeting...");
+            
             ZOOM_SDK_NAMESPACE::IMeetingService* meeting_service = nullptr;
             ZOOM_SDK_NAMESPACE::CreateMeetingService(&meeting_service);
             
@@ -181,7 +197,7 @@ public:
             }
         }
     }
-    virtual void onLoginReturnWithReason(ZOOM_SDK_NAMESPACE::LOGINSTATUS ret, ZOOM_SDK_NAMESPACE::IAccountInfo* pAccountInfo, ZOOM_SDK_NAMESPACE::LoginFailReason reason) override {}
+
     virtual void onLogout() override {}
     virtual void onZoomIdentityExpired() override {}
     virtual void onZoomAuthIdentityExpired() override {}
@@ -191,6 +207,7 @@ public:
 };
 static ZoomAuthListener g_authListener;
 
+// --- [LOCKED] OBS SOURCE HELPERS ---
 class ZoomSource {
 public:
     obs_source_t* source;
@@ -239,7 +256,7 @@ bool obs_module_load(void) {
 
     obs_register_source(&zoom_participant_info);
     obs_register_source(&zoom_screenshare_info);
-  
+
     ZOOM_SDK_NAMESPACE::InitParam initParam;
     initParam.strWebDomain = L"https://zoom.us";
     
@@ -248,7 +265,6 @@ bool obs_module_load(void) {
         if (ZOOM_SDK_NAMESPACE::CreateAuthService(&auth_service) == ZOOM_SDK_NAMESPACE::SDKERR_SUCCESS && auth_service) {
             auth_service->SetEvent(&g_authListener);
             ZOOM_SDK_NAMESPACE::AuthContext authContext;
-            // PASTE YOUR ROLE 1 JWT HERE
             authContext.jwt_token = L"eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJhcHBLZXkiOiJZNzNqelFSbVF4aWhoNFo3MnFSMnRnIiwiaWF0IjoxNzc0MDUwMDAwLCJleHAiOjE3NzY2NDIwMDAsInRva2VuRXhwIjoxNzc2NjQyMDAwLCJyb2xlIjoxLCJ1c2VyRW1haWwiOiJEYXZpZEBMZXRzRG9WaWRlby5jb20ifQ.1ldmzxzK-gdzWJkxr7KkkwnYq8qEnbMGVTJFihAhuEA"; 
             auth_service->SDKAuth(authContext);
         }
