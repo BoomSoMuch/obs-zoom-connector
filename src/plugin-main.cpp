@@ -155,7 +155,7 @@ public:
 };
 static ZoomMeetingListener g_meetingListener;
 
-// --- THE ZOOM AUTH LISTENER (RE-FIXED FOR SDK 6.7.5) ---
+// --- FIXED ZOOM AUTH LISTENER (VERIFIED FOR SDK 6.7.5) ---
 class ZoomAuthListener : public ZOOM_SDK_NAMESPACE::IAuthServiceEvent {
 public:
     virtual void onAuthenticationReturn(ZOOM_SDK_NAMESPACE::AuthResult ret) override {
@@ -166,8 +166,10 @@ public:
             ZOOM_SDK_NAMESPACE::CreateAuthService(&auth_service);
             
             if (auth_service) {
-                // FIXED: Use version-specific enum syntax for SSO/Browser launch
+                // FIXED: Use scoped enum and internal union name 'ssoLogin' from your SDK headers
                 ZOOM_SDK_NAMESPACE::LoginParam loginParam;
+                memset(&loginParam, 0, sizeof(ZOOM_SDK_NAMESPACE::LoginParam));
+                
                 loginParam.ut = ZOOM_SDK_NAMESPACE::LoginType::LoginType_SSO; 
                 loginParam.param.ssoLogin.ssoToken = nullptr; 
                 
@@ -177,7 +179,8 @@ public:
     }
 
     virtual void onLoginReturnWithReason(ZOOM_SDK_NAMESPACE::LOGINSTATUS ret, ZOOM_SDK_NAMESPACE::IAccountInfo* pAccountInfo, ZOOM_SDK_NAMESPACE::LoginFailReason reason) override {
-        if (ret == ZOOM_SDK_NAMESPACE::LOGIN_SUCCESS) { 
+        // FIXED: Use scoped LOGINSTATUS::LOGIN_SUCCESS enum
+        if (ret == ZOOM_SDK_NAMESPACE::LOGINSTATUS::LOGIN_SUCCESS) { 
             blog(LOG_INFO, "[Zoom to OBS] Browser Login Success! Joining meeting...");
             
             ZOOM_SDK_NAMESPACE::IMeetingService* meeting_service = nullptr;
@@ -187,17 +190,19 @@ public:
                 meeting_service->SetEvent(&g_meetingListener);
                 
                 ZOOM_SDK_NAMESPACE::JoinParam joinParam;
-                joinParam.userType = ZOOM_SDK_NAMESPACE::SDK_UT_WITHOUT_LOGIN;
+                // Since user is logged in, we use LOGGEDIN user type
+                joinParam.userType = ZOOM_SDK_NAMESPACE::SDK_UT_LOGGEDIN;
                 
-                ZOOM_SDK_NAMESPACE::JoinParam4WithoutLogin& param = joinParam.param.withoutloginuserJoin;
+                ZOOM_SDK_NAMESPACE::JoinParam4LoggedInJoin& param = joinParam.param.loggedinuserJoin;
                 param.meetingNumber = 7723013754ULL; 
                 param.userName = L"OBS Host Bot";
-                param.psw = L""; 
                 param.isAudioOff = true;
                 param.isVideoOff = true;
 
                 meeting_service->Join(joinParam);
             }
+        } else {
+            blog(LOG_ERROR, "[Zoom to OBS] Login failed. Reason code: %d", (int)reason);
         }
     }
 
@@ -244,35 +249,4 @@ OBS_MODULE_USE_DEFAULT_LOCALE("obs-zoom-connector", "en-US")
 
 bool obs_module_load(void) {
     zoom_participant_info.id = "zoom_participant_source";
-    zoom_participant_info.type = OBS_SOURCE_TYPE_INPUT;
-    zoom_participant_info.output_flags = OBS_SOURCE_ASYNC_VIDEO;
-    zoom_participant_info.get_name = [](void*) { return "Zoom Participant"; };
-    zoom_participant_info.create = zp_create;
-    zoom_participant_info.destroy = z_destroy;
-
-    zoom_screenshare_info.id = "zoom_screenshare_source";
-    zoom_screenshare_info.type = OBS_SOURCE_TYPE_INPUT;
-    zoom_screenshare_info.output_flags = OBS_SOURCE_ASYNC_VIDEO;
-    zoom_screenshare_info.get_name = [](void*) { return "Zoom Screenshare"; };
-    zoom_screenshare_info.create = zs_create;
-    zoom_screenshare_info.destroy = z_destroy;
-
-    obs_register_source(&zoom_participant_info);
-    obs_register_source(&zoom_screenshare_info);
-
-    ZOOM_SDK_NAMESPACE::InitParam initParam;
-    initParam.strWebDomain = L"https://zoom.us";
-    
-    if (ZOOM_SDK_NAMESPACE::InitSDK(initParam) == ZOOM_SDK_NAMESPACE::SDKERR_SUCCESS) {
-        ZOOM_SDK_NAMESPACE::IAuthService* auth_service = nullptr;
-        if (ZOOM_SDK_NAMESPACE::CreateAuthService(&auth_service) == ZOOM_SDK_NAMESPACE::SDKERR_SUCCESS && auth_service) {
-            auth_service->SetEvent(&g_authListener);
-            ZOOM_SDK_NAMESPACE::AuthContext authContext;
-            authContext.jwt_token = L"eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJhcHBLZXkiOiJZNzNqelFSbVF4aWhoNFo3MnFSMnRnIiwiaWF0IjoxNzc0MDUwMDAwLCJleHAiOjE3NzY2NDIwMDAsInRva2VuRXhwIjoxNzc2NjQyMDAwLCJyb2xlIjoxLCJ1c2VyRW1haWwiOiJEYXZpZEBMZXRzRG9WaWRlby5jb20ifQ.1ldmzxzK-gdzWJkxr7KkkwnYq8qEnbMGVTJFihAhuEA"; 
-            auth_service->SDKAuth(authContext);
-        }
-    }
-    return true;
-}
-
-void obs_module_unload(void) {}
+    zoom_participant_info
