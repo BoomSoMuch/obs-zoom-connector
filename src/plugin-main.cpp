@@ -22,7 +22,7 @@ void JoinMeeting() {
     if (!g_pMeetingService) return;
 
     JoinParam joinParam;
-    // We use the exact member name 'withoutloginuserJoin' from your header
+    // Matching the member name from your meeting service header
     joinParam.userType = SDK_UT_WITHOUT_LOGIN;
     joinParam.param.withoutloginuserJoin.meetingNumber = 7723013754;
     joinParam.param.withoutloginuserJoin.userName = L"OBS Connector";
@@ -56,7 +56,6 @@ public:
 class ZoomMeetingListener : public IMeetingServiceEvent {
 public:
     void onMeetingStatusChanged(MeetingStatus status, int iResult) override {
-        // Status 3 = In Meeting
         blog(LOG_INFO, "[Zoom] Meeting Status Changed: %d", status);
     }
     void onMeetingStatisticsWarningNotification(StatisticsWarningType type) override {}
@@ -98,6 +97,7 @@ bool obs_module_load(void) {
     initParam.strWebDomain = L"https://zoom.us";
     
     if (InitSDK(initParam) == SDKERR_SUCCESS) {
+        blog(LOG_INFO, "[Zoom] SDK Initialized.");
         if (CreateAuthService(&g_pAuthService) == SDKERR_SUCCESS) {
             authListener = new ZoomAuthListener();
             g_pAuthService->SetEvent(authListener);
@@ -108,16 +108,16 @@ bool obs_module_load(void) {
             }
 
             AuthContext authContext;
-            // The JWT must be on one single line below:
             authContext.jwt_token = L"eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJhcHBLZXkiOiJZNzNqelFSbVF4aWhoNFo3MnFSMnRnIiwiaWF0IjoxNzc0MDUwMDAwLCJleHAiOjE3NzY2NDIwMDAsInRva2VuRXhwIjoxNzc2NjQyMDAwLCJyb2xlIjoxLCJ1c2VyRW1haWwiOiJEYXZpZEBMZXRzRG9WaWRlby5jb20ifQ.1ldmzxzK-gdzWJkxr7KkkwnYq8qEnbMGVTJFihAhuEA";
             
             g_pAuthService->SDKAuth(authContext);
+            blog(LOG_INFO, "[Zoom] Auth request sent.");
         }
     }
     return true;
 }
 
 void obs_module_unload(void) {
-    // Clean up to prevent crashes on OBS exit
-    if (g_pAuthService) Cleanupsdk();
+    // Corrected function name from zoom_sdk.h
+    if (g_pAuthService) CleanUPSDK(); 
 }
