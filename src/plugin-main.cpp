@@ -155,7 +155,7 @@ public:
 };
 static ZoomMeetingListener g_meetingListener;
 
-// --- FIXED ZOOM AUTH LISTENER (MATCHING SDK 6.7.5) ---
+// --- THE ZOOM AUTH LISTENER (RE-FIXED FOR SDK 6.7.5) ---
 class ZoomAuthListener : public ZOOM_SDK_NAMESPACE::IAuthServiceEvent {
 public:
     virtual void onAuthenticationReturn(ZOOM_SDK_NAMESPACE::AuthResult ret) override {
@@ -166,19 +166,18 @@ public:
             ZOOM_SDK_NAMESPACE::CreateAuthService(&auth_service);
             
             if (auth_service) {
-                // FIXED: In SDK 6.7.5, we use LoginWithEmail or SSO logic via specific params.
-                // For SSO/Browser flow, we use the SDK's internal helper.
+                // FIXED: Use version-specific enum syntax for SSO/Browser launch
                 ZOOM_SDK_NAMESPACE::LoginParam loginParam;
-                loginParam.ut = ZOOM_SDK_NAMESPACE::LoginType_SSO; // Fixed constant naming
-                loginParam.param.ssoLogin.ssoToken = nullptr; // Triggers browser launch
+                loginParam.ut = ZOOM_SDK_NAMESPACE::LoginType::LoginType_SSO; 
+                loginParam.param.ssoLogin.ssoToken = nullptr; 
                 
-                auth_service->Login(loginParam); // Fixed call signature
+                auth_service->Login(loginParam); 
             }
         }
     }
 
     virtual void onLoginReturnWithReason(ZOOM_SDK_NAMESPACE::LOGINSTATUS ret, ZOOM_SDK_NAMESPACE::IAccountInfo* pAccountInfo, ZOOM_SDK_NAMESPACE::LoginFailReason reason) override {
-        if (ret == ZOOM_SDK_NAMESPACE::LOGIN_SUCCESS) { // Fixed status constant
+        if (ret == ZOOM_SDK_NAMESPACE::LOGIN_SUCCESS) { 
             blog(LOG_INFO, "[Zoom to OBS] Browser Login Success! Joining meeting...");
             
             ZOOM_SDK_NAMESPACE::IMeetingService* meeting_service = nullptr;
