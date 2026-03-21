@@ -1,24 +1,23 @@
 #include "zoom_sdk.h"
 #include "meeting_service_interface.h"
 #include "auth_service_interface.h"
-#include "meeting_recording_interface.h"
+// Corrected path based on your 'meeting_service_components' folder
+#include "meeting_service_components/meeting_recording_interface.h"
 #include <iostream>
+#include <tchar.h> // For _T() support
 
 using namespace ZOOMSDK;
 
 // --- AUTH LISTENER ---
 class ZoomAuthListener : public IAuthServiceEvent {
 public:
-    void onAuthenticationReturn(AuthResult ret) override {
-        std::cout << "Auth Return: " << ret << std::endl;
-    }
-    void onLoginReturnWithReason(LOGINSTATUS ret, IAccountInfo* pAccountInfo, LoginFailReason reason) override {
-        std::cout << "Login Return: " << ret << std::endl;
-    }
+    void onAuthenticationReturn(AuthResult ret) override { std::cout << "Auth: " << ret << std::endl; }
+    void onLoginReturnWithReason(LOGINSTATUS ret, IAccountInfo* pAccountInfo, LoginFailReason reason) override {}
     void onLogout() override {}
     void onZoomIdentityExpired() override {}
     void onZoomAuthIdentityExpired() override {}
 #if defined(WIN32)
+    // Mandatory for Windows interface
     void onNotificationServiceStatus(SDKNotificationServiceStatus status, SDKNotificationServiceError error) override {}
 #endif
 };
@@ -26,17 +25,17 @@ public:
 // --- MEETING LISTENER ---
 class ZoomMeetingListener : public IMeetingServiceEvent {
 public:
-    void onMeetingStatusChanged(MeetingStatus status, int iResult) override {
-        std::cout << "Meeting Status: " << status << std::endl;
-    }
+    void onMeetingStatusChanged(MeetingStatus status, int iResult) override { std::cout << "Status: " << status << std::endl; }
     void onMeetingStatisticsWarningNotification(StatisticsWarningType type) override {}
     void onMeetingParameterNotification(const MeetingParameter* meeting_param) override {}
     void onSuspendParticipantsActivities() override {}
     void onAICompanionActiveChangeNotice(bool bActive) override {}
     void onMeetingTopicChanged(const zchar_t* sTopic) override {}
     void onMeetingFullToWatchLiveStream(const zchar_t* sLiveStreamUrl) override {}
+    // Added missing network status handler
     void onUserNetworkStatusChanged(MeetingComponentType type, ConnectionQuality level, unsigned int userId, bool uplink) override {}
 #if defined(WIN32)
+    // Mandatory Windows callback
     void onAppSignalPanelUpdated(IMeetingAppSignalHandler* pHandler) override {}
 #endif
 };
@@ -54,15 +53,15 @@ public:
     void onCloudRecordingStorageFull(time_t gracePeriodDate) override {}
     void onEnableAndStartSmartRecordingRequested(IRequestEnableAndStartSmartRecordingHandler* handler) override {}
     void onSmartRecordingEnableActionCallback(ISmartRecordingEnableActionHandler* handler) override {}
-
 #if defined(WIN32)
+    // Mandatory Windows callbacks for local recording
     void onRecording2MP4Done(bool bsuccess, int iResult, const zchar_t* szPath) override {}
     void onRecording2MP4Processing(int iPercentage) override {}
     void onCustomizedLocalRecordingSourceNotification(ICustomizedLocalRecordingLayoutHelper* layout_helper) override {}
 #endif
 };
 
-// Global Listener Instances
+// Global instances
 ZoomAuthListener authListener;
 ZoomMeetingListener meetingListener;
 ZoomRecordingListener recordingListener;
@@ -71,6 +70,7 @@ extern "C" __declspec(dllexport) bool InitializeSDK(const char* jwt) {
     InitParam initParam;
     initParam.strWebDomain = _T("https://zoom.us");
     
+    IZoomSDK* SDKInst = nullptr;
     SDKError err = CreateSDKInst(&SDKInst);
     if (err != SDKERR_SUCCESS) return false;
 
