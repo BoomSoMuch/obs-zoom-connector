@@ -15,10 +15,10 @@
 using namespace ZOOMSDK;
 
 // --- 1. ZOOM LISTENERS ---
-
 class ZoomAuthListener : public IAuthServiceEvent {
 public:
     void onAuthenticationReturn(AuthResult ret) override { 
+        // 0 = SDKERR_SUCCESS. If you see 0 in the log, you are officially connected to Zoom.
         blog(LOG_INFO, "[Zoom] Auth Return Code: %d", ret); 
     }
     void onLoginReturnWithReason(LOGINSTATUS ret, IAccountInfo* p, LoginFailReason r) override {}
@@ -72,53 +72,72 @@ ZoomMeetingListener meetingListener;
 IAuthService* g_pAuthService = nullptr;
 IMeetingService* g_pMeetingService = nullptr;
 
-// --- 3. OBS SOURCE DEFINITIONS ---
-
+// --- 3. OBS SOURCE STUBS ---
+// These fix the 'get_width' / 'get_height' errors in your OBS log.
 static const char* get_p_name(void* unused) { return "Zoom Participant"; }
-static uint32_t get_width(void* data) { return 1280; }  // Required by OBS log
-static uint32_t get_height(void* data) { return 720; }  // Required by OBS log
+static const char* get_g_name(void* unused) { return "Zoom Gallery"; }
+static const char* get_s_name(void* unused) { return "Zoom Screenshare"; }
+static uint32_t get_w(void* d) { return 1280; }
+static uint32_t get_h(void* d) { return 720; }
 static void* create_stub(obs_data_t* s, obs_source_t* src) { return (void*)1; }
 static void destroy_stub(void* d) {}
 
-struct obs_source_info zoom_participant_info = {};
-struct obs_source_info zoom_gallery_info = {};
-struct obs_source_info zoom_screenshare_info = {};
+struct obs_source_info z_part_info = {};
+struct obs_source_info z_gall_info = {};
+struct obs_source_info z_shared_info = {};
 
-// --- 4. OBS MODULE ENTRY POINTS ---
-
+// --- 4. OBS MODULE LOAD ---
 OBS_DECLARE_MODULE()
 OBS_MODULE_USE_DEFAULT_LOCALE("obs-zoom-connector", "en-US")
 
 bool obs_module_load(void) {
-    // 1. Setup Source Info (Fixing the "get_width" error from your log)
-    zoom_participant_info.id = "zoom_participant_source";
-    zoom_participant_info.type = OBS_SOURCE_TYPE_INPUT;
-    zoom_participant_info.output_flags = OBS_SOURCE_VIDEO;
-    zoom_participant_info.get_name = get_p_name;
-    zoom_participant_info.create = create_stub;
-    zoom_participant_info.destroy = destroy_stub;
-    zoom_participant_info.get_width = get_width;
-    zoom_participant_info.get_height = get_height;
+    // Register Sources
+    z_part_info.id = "zoom_participant_source";
+    z_part_info.type = OBS_SOURCE_TYPE_INPUT;
+    z_part_info.output_flags = OBS_SOURCE_VIDEO;
+    z_part_info.get_name = get_p_name;
+    z_part_info.create = create_stub;
+    z_part_info.destroy = destroy_stub;
+    z_part_info.get_width = get_w;
+    z_part_info.get_height = get_h;
+    obs_register_source(&z_part_info);
 
-    obs_register_source(&zoom_participant_info);
+    z_gall_info.id = "zoom_gallery_source";
+    z_gall_info.type = OBS_SOURCE_TYPE_INPUT;
+    z_gall_info.output_flags = OBS_SOURCE_VIDEO;
+    z_gall_info.get_name = get_g_name;
+    z_gall_info.create = create_stub;
+    z_gall_info.destroy = destroy_stub;
+    z_gall_info.get_width = get_w;
+    z_gall_info.get_height = get_h;
+    obs_register_source(&z_gall_info);
 
-    // 2. Initialize Zoom SDK immediately when OBS starts
+    z_shared_info.id = "zoom_screenshare_source";
+    z_shared_info.type = OBS_SOURCE_TYPE_INPUT;
+    z_shared_info.output_flags = OBS_SOURCE_VIDEO;
+    z_shared_info.get_name = get_s_name;
+    z_shared_info.create = create_stub;
+    z_shared_info.destroy = destroy_stub;
+    z_shared_info.get_width = get_w;
+    z_shared_info.get_height = get_h;
+    obs_register_source(&z_shared_info);
+
+    // Zoom Initialization
     InitParam initParam;
     initParam.strWebDomain = _T("https://zoom.us");
     
     if (InitSDK(initParam) == SDKERR_SUCCESS) {
-        blog(LOG_INFO, "[Zoom] SDK Initialized");
+        blog(LOG_INFO, "[Zoom] SDK Initialized.");
         
         if (CreateAuthService(&g_pAuthService) == SDKERR_SUCCESS && g_pAuthService) {
             g_pAuthService->SetEvent(&authListener);
             
-            // 3. START AUTHENTICATION
-            // Replace "YOUR_JWT_HERE" with your actual JWT token string
             AuthContext authContext;
-            authContext.jwt_token = _T("YOUR_JWT_HERE"); 
+            // Your JWT is now integrated
+            authContext.jwt_token = _T("eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJhcHBLZXkiOiJZNzNqelFSbVF4aWhoNFo3MnFSMnRnIiwiaWF0IjoxNzc0MDUwMDAwLCJleHAiOjE3NzY2NDIwMDAsInRva2VuRXhwIjoxNzc2NjQyMDAwLCJyb2xlIjoxLCJ1c2VyRW1haWwiOiJEYXZpZEBMZXRzRG9WaWRlby5jb20ifQ.1ldmzxzK-gdzWJkxr7KkkwnYq8qEnbMGVTJFihAhuEA"); 
             
             if (g_pAuthService->SDKAuth(authContext) == SDKERR_SUCCESS) {
-                blog(LOG_INFO, "[Zoom] Auth request sent successfully");
+                blog(LOG_INFO, "[Zoom] Auth request sent with provided JWT.");
             }
         }
     }
