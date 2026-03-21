@@ -42,7 +42,7 @@ public:
 static ZoomVideoCatcher g_videoCatcher;
 static ZOOM_SDK_NAMESPACE::IZoomSDKRenderer* g_videoRenderer = nullptr;
 
-// --- RECORDING CONTROLLER (STUBBED FOR YOUR SDK) ---
+// --- RECORDING CONTROLLER ---
 class ZoomRecordingListener : public ZOOM_SDK_NAMESPACE::IMeetingRecordingCtrlEvent {
 public:
     virtual void onRecordPrivilegeChanged(bool bCanRec) override {
@@ -62,6 +62,7 @@ public:
             }
         }
     }
+    // Updated parameter types to match global SDK definitions
     virtual void onRecordingStatus(ZOOM_SDK_NAMESPACE::RecordingStatus s) override {}
     virtual void onCloudRecordingStatus(ZOOM_SDK_NAMESPACE::RecordingStatus s) override {}
     virtual void onLocalRecordingPrivilegeRequestStatus(ZOOM_SDK_NAMESPACE::RequestLocalRecordingStatus s) override {}
@@ -71,11 +72,11 @@ public:
     virtual void onCloudRecordingStorageFull(time_t g) override {}
     virtual void onEnableAndStartSmartRecordingRequested(ZOOM_SDK_NAMESPACE::IRequestEnableAndStartSmartRecordingHandler* h) override {}
     virtual void onSmartRecordingEnableActionCallback(ZOOM_SDK_NAMESPACE::ISmartRecordingEnableActionHandler* h) override {}
-    virtual void onTranscodingStatusChanged(ZOOM_SDK_NAMESPACE::IMeetingRecordingCtrlEvent::TranscodingStatus status) override {} 
+    virtual void onTranscodingStatusChanged(ZOOM_SDK_NAMESPACE::TranscodingStatus status) override {} 
 };
 static ZoomRecordingListener g_recordingListener;
 
-// --- MEETING SERVICE (STUBBED FOR YOUR SDK) ---
+// --- MEETING SERVICE ---
 class ZoomMeetingListener : public ZOOM_SDK_NAMESPACE::IMeetingServiceEvent {
 public:
     virtual void onMeetingStatusChanged(ZOOM_SDK_NAMESPACE::MeetingStatus status, int iResult = 0) override {
@@ -95,21 +96,21 @@ public:
     virtual void onMeetingTopicChanged(const zchar_t* s) override {}
     virtual void onMeetingFullToWatchLiveStream(const zchar_t* s) override {}
     virtual void onUserNetworkStatusChanged(ZOOM_SDK_NAMESPACE::MeetingComponentType t, ZOOM_SDK_NAMESPACE::ConnectionQuality l, unsigned int u, bool up) override {}
-    virtual void onMeetingConnectTerminalStatus(ZOOM_SDK_NAMESPACE::IMeetingServiceEvent::MeetingConnectTerminalStatus status) override {}
+    virtual void onMeetingConnectTerminalStatus(ZOOM_SDK_NAMESPACE::MeetingConnectTerminalStatus status) override {
+        // This parameter usually doesn't need the IMeetingServiceEvent:: prefix in this SDK build
+    }
 };
 static ZoomMeetingListener g_meetingListener;
 
-// --- AUTH SERVICE (SSO & STUBBED) ---
+// --- AUTH SERVICE ---
 class ZoomAuthListener : public ZOOM_SDK_NAMESPACE::IAuthServiceEvent {
 public:
     virtual void onAuthenticationReturn(ZOOM_SDK_NAMESPACE::AuthResult ret) override {
         if (ret == ZOOM_SDK_NAMESPACE::AUTHRET_SUCCESS) {
-            blog(LOG_INFO, "[Zoom] SDK Auth Success. Launching SSO Login...");
-            
+            blog(LOG_INFO, "[Zoom] SDK Auth Success.");
             ZOOM_SDK_NAMESPACE::IAuthService* auth = nullptr;
             ZOOM_SDK_NAMESPACE::CreateAuthService(&auth);
             if (auth) {
-                // Generates the browser URL. Use "zoom" as default vanity.
                 const zchar_t* ssoUrl = auth->GenerateSSOLoginWebURL(L"zoom");
                 if (ssoUrl) {
                     ShellExecuteW(NULL, L"open", ssoUrl, NULL, NULL, SW_SHOWNORMAL);
@@ -121,7 +122,6 @@ public:
     virtual void onLoginReturnWithReason(ZOOM_SDK_NAMESPACE::LOGINSTATUS ret, ZOOM_SDK_NAMESPACE::IAccountInfo* p, ZOOM_SDK_NAMESPACE::LoginFailReason r) override {
         if (ret == ZOOM_SDK_NAMESPACE::LOGIN_SUCCESS) {
             blog(LOG_INFO, "[Zoom] Logged in as Host: %ls", p->GetDisplayName());
-
             ZOOM_SDK_NAMESPACE::IMeetingService* ms = nullptr;
             ZOOM_SDK_NAMESPACE::CreateMeetingService(&ms);
             if (ms) {
@@ -165,7 +165,7 @@ bool obs_module_load(void) {
         if (auth) {
             auth->SetEvent(&g_authListener);
             ZOOM_SDK_NAMESPACE::AuthContext ctx;
-            ctx.jwt_token = L"eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJhcHBLZXkiOiJZNzNqelFSbVF4aWhoNFo3MnFSMnRnIiwiaWF0IjoxNzc0MDUwMDAwLCJleHAiOjE3NzY2NDIwMDAsInRva2VuRXhwIjoxNzc2NjQyMDAwLCJyb2xlIjoxLCJ1c2VyRW1haWwiOiJEYXZpZEBMZXRzRG9WaWRlby5jb20ifQ.1ldmzxzK-gdzWJkxr7KkkwnYq8qEnbMGVTJFihAhuEA"; // Update this with your JWT
+            ctx.jwt_token = L"eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJhcHBLZXkiOiJZNzNqelFSbVF4aWhoNFo3MnFSMnRnIiwiaWF0IjoxNzc0MDUwMDAwLCJleHAiOjE3NzY2NDIwMDAsInRva2VuRXhwIjoxNzc2NjQyMDAwLCJyb2xlIjoxLCJ1c2VyRW1haWwiOiJEYXZpZEBMZXRzRG9WaWRlby5jb20ifQ.1ldmzxzK-gdzWJkxr7KkkwnYq8qEnbMGVTJFihAhuEA";
             auth->SDKAuth(ctx);
         }
     }
