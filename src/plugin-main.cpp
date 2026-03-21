@@ -1,16 +1,18 @@
-// 1. Windows system headers MUST be first
+// 1. Mandatory Windows system headers must come BEFORE Zoom headers
 #define WIN32_LEAN_AND_MEAN
 #include <windows.h>
 #include <tchar.h>
 
-// 2. Zoom SDK headers (Corrected paths based on your folder structure)
+// 2. Zoom SDK headers
 #include "zoom_sdk.h"
 #include "meeting_service_interface.h"
 #include "auth_service_interface.h"
+// Path corrected based on your folder structure
 #include "meeting_service_components/meeting_recording_interface.h"
 
 #include <iostream>
 
+// Use the namespace to ensure CreateSDKInst is found
 using namespace ZOOMSDK;
 
 // --- AUTH LISTENER ---
@@ -46,7 +48,7 @@ public:
 class ZoomRecordingListener : public IMeetingRecordingCtrlEvent {
 public:
     void onRecordingStatus(RecordingStatus status) override {}
-    void onCloudRecordingStatus(RecordingStatus status) override { std::cout << "Cloud Rec Status: " << status << std::endl; }
+    void onCloudRecordingStatus(RecordingStatus status) override {}
     void onRecordPrivilegeChanged(bool bCanRec) override {}
     void onLocalRecordingPrivilegeRequestStatus(RequestLocalRecordingStatus status) override {}
     void onRequestCloudRecordingResponse(RequestStartCloudRecordingStatus status) override {}
@@ -62,25 +64,29 @@ public:
 #endif
 };
 
-// Global Listener Instances
+// Global pointers and listeners
 ZoomAuthListener authListener;
 ZoomMeetingListener meetingListener;
 ZoomRecordingListener recordingListener;
-
-// Global SDK Pointer
 IZoomSDK* g_pSDKInst = nullptr; 
 
 extern "C" __declspec(dllexport) bool InitializeSDK(const char* jwt) {
     InitParam initParam;
     initParam.strWebDomain = _T("https://zoom.us");
     
-    // Call the SDK-provided function to create the instance
-    SDKError err = CreateSDKInst(&g_pSDKInst);
-    if (err != SDKERR_SUCCESS || !g_pSDKInst) return false;
+    // Explicitly use the ZOOMSDK namespace for the creation function
+    SDKError err = ZOOMSDK::CreateSDKInst(&g_pSDKInst);
+    
+    if (err != SDKERR_SUCCESS || !g_pSDKInst) {
+        return false;
+    }
 
     err = g_pSDKInst->InitSDK(initParam);
-    if (err != SDKERR_SUCCESS) return false;
+    if (err != SDKERR_SUCCESS) {
+        return false;
+    }
 
+    // Link our listeners
     IAuthService* pAuth = g_pSDKInst->GetAuthService();
     if (pAuth) pAuth->SetEvent(&authListener);
 
