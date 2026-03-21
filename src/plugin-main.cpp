@@ -89,4 +89,87 @@ public:
         }
     }
     virtual void onMeetingStatisticsWarningNotification(ZOOM_SDK_NAMESPACE::StatisticsWarningType t) override {}
-    virtual void onMeetingParameterNotification(const ZOOM_SDK_NAMESPACE
+    virtual void onMeetingParameterNotification(const ZOOM_SDK_NAMESPACE::MeetingParameter* p) override {}
+    virtual void onSuspendParticipantsActivities() override {}
+    virtual void onAICompanionActiveChangeNotice(bool b) override {}
+    virtual void onMeetingTopicChanged(const zchar_t* s) override {}
+    virtual void onMeetingFullToWatchLiveStream(const zchar_t* s) override {}
+    virtual void onUserNetworkStatusChanged(ZOOM_SDK_NAMESPACE::MeetingComponentType t, ZOOM_SDK_NAMESPACE::ConnectionQuality l, unsigned int u, bool up) override {}
+    virtual void onMeetingConnectTerminalStatus(ZOOM_SDK_NAMESPACE::MeetingConnectTerminalStatus status) override {}
+};
+static ZoomMeetingListener g_meetingListener;
+
+// --- AUTH SERVICE (SSO & STUBBED) ---
+class ZoomAuthListener : public ZOOM_SDK_NAMESPACE::IAuthServiceEvent {
+public:
+    virtual void onAuthenticationReturn(ZOOM_SDK_NAMESPACE::AuthResult ret) override {
+        if (ret == ZOOM_SDK_NAMESPACE::AUTHRET_SUCCESS) {
+            blog(LOG_INFO, "[Zoom] SDK Auth Success. Launching SSO Login...");
+            
+            ZOOM_SDK_NAMESPACE::IAuthService* auth = nullptr;
+            ZOOM_SDK_NAMESPACE::CreateAuthService(&auth);
+            if (auth) {
+                // Generates the browser URL. Use "zoom" as default vanity.
+                const zchar_t* ssoUrl = auth->GenerateSSOLoginWebURL(L"zoom");
+                if (ssoUrl) {
+                    ShellExecuteW(NULL, L"open", ssoUrl, NULL, NULL, SW_SHOWNORMAL);
+                }
+            }
+        }
+    }
+
+    virtual void onLoginReturnWithReason(ZOOM_SDK_NAMESPACE::LOGINSTATUS ret, ZOOM_SDK_NAMESPACE::IAccountInfo* p, ZOOM_SDK_NAMESPACE::LoginFailReason r) override {
+        if (ret == ZOOM_SDK_NAMESPACE::LOGIN_SUCCESS) {
+            blog(LOG_INFO, "[Zoom] Logged in as Host: %ls", p->GetDisplayName());
+
+            ZOOM_SDK_NAMESPACE::IMeetingService* ms = nullptr;
+            ZOOM_SDK_NAMESPACE::CreateMeetingService(&ms);
+            if (ms) {
+                ms->SetEvent(&g_meetingListener);
+                ZOOM_SDK_NAMESPACE::JoinParam jp;
+                jp.userType = ZOOM_SDK_NAMESPACE::SDK_UT_NORMALUSER; 
+                auto& pJoin = jp.param.normaluserJoin;
+                pJoin.meetingNumber = 7723013754ULL;
+                pJoin.userName = L"OBS Host Bot";
+                ms->Join(jp);
+            }
+        }
+    }
+
+    virtual void onLogout() override {}
+    virtual void onZoomIdentityExpired() override {}
+    virtual void onZoomAuthIdentityExpired() override {}
+    virtual void onNotificationServiceStatus(ZOOM_SDK_NAMESPACE::SDKNotificationServiceStatus s, ZOOM_SDK_NAMESPACE::SDKNotificationServiceError e) override {}
+};
+static ZoomAuthListener g_authListener;
+
+// --- OBS MODULE CORE ---
+OBS_DECLARE_MODULE()
+OBS_MODULE_USE_DEFAULT_LOCALE("obs-zoom-connector", "en-US")
+
+bool obs_module_load(void) {
+    struct obs_source_info info = {};
+    info.id = "zoom_participant_source";
+    info.type = OBS_SOURCE_TYPE_INPUT;
+    info.output_flags = OBS_SOURCE_ASYNC_VIDEO;
+    info.get_name = [](void*) { return "Zoom Participant"; };
+    info.create = [](obs_data_t*, obs_source_t* s) { g_participantSource = s; return (void*)1; };
+    info.destroy = [](void*) { g_participantSource = nullptr; };
+    obs_register_source(&info);
+
+    ZOOM_SDK_NAMESPACE::InitParam ip;
+    ip.strWebDomain = L"https://zoom.us";
+    if (ZOOM_SDK_NAMESPACE::InitSDK(ip) == ZOOM_SDK_NAMESPACE::SDKERR_SUCCESS) {
+        ZOOM_SDK_NAMESPACE::IAuthService* auth = nullptr;
+        ZOOM_SDK_NAMESPACE::CreateAuthService(&auth);
+        if (auth) {
+            auth->SetEvent(&g_authListener);
+            ZOOM_SDK_NAMESPACE::AuthContext ctx;
+            ctx.jwt_token = L"eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJhcHBLZXkiOiJZNzNqelFSbVF4aWhoNFo3MnFSMnRnIiwiaWF0IjoxNzc0MDUwMDAwLCJleHAiOjE3NzY2NDIwMDAsInRva2VuRXhwIjoxNzc2NjQyMDAwLCJyb2xlIjoxLCJ1c2VyRW1haWwiOiJEYXZpZEBMZXRzRG9WaWRlby5jb20ifQ.1ldmzxzK-gdzWJkxr7KkkwnYq8qEnbMGVTJFihAhuEA"; // Update this with your JWT
+            auth->SDKAuth(ctx);
+        }
+    }
+    return true;
+}
+
+void obs_module_unload(void) {}
