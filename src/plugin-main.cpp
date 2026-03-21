@@ -71,7 +71,7 @@ public:
     virtual void onCloudRecordingStorageFull(time_t g) override {}
     virtual void onEnableAndStartSmartRecordingRequested(ZOOM_SDK_NAMESPACE::IRequestEnableAndStartSmartRecordingHandler* h) override {}
     virtual void onSmartRecordingEnableActionCallback(ZOOM_SDK_NAMESPACE::ISmartRecordingEnableActionHandler* h) override {}
-    virtual void onTranscodingStatusChanged(ZOOM_SDK_NAMESPACE::TranscodingStatus status) override {} 
+    virtual void onTranscodingStatusChanged(ZOOM_SDK_NAMESPACE::IMeetingRecordingCtrlEvent::TranscodingStatus status) override {} 
 };
 static ZoomRecordingListener g_recordingListener;
 
@@ -95,7 +95,7 @@ public:
     virtual void onMeetingTopicChanged(const zchar_t* s) override {}
     virtual void onMeetingFullToWatchLiveStream(const zchar_t* s) override {}
     virtual void onUserNetworkStatusChanged(ZOOM_SDK_NAMESPACE::MeetingComponentType t, ZOOM_SDK_NAMESPACE::ConnectionQuality l, unsigned int u, bool up) override {}
-    virtual void onMeetingConnectTerminalStatus(ZOOM_SDK_NAMESPACE::MeetingConnectTerminalStatus status) override {}
+    virtual void onMeetingConnectTerminalStatus(ZOOM_SDK_NAMESPACE::IMeetingServiceEvent::MeetingConnectTerminalStatus status) override {}
 };
 static ZoomMeetingListener g_meetingListener;
 
