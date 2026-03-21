@@ -296,7 +296,7 @@ bool obs_module_load(void) {
         if (err == ZOOM_SDK_NAMESPACE::SDKERR_SUCCESS && auth_service) {
             auth_service->SetEvent(&g_authListener);
             ZOOM_SDK_NAMESPACE::AuthContext authContext;
-            authContext.jwt_token = L"eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJhcHBLZXkiOiJzWUlqWGpqelFkMmJOQ2dYMXZKWU1BIiwiaWF0IjoxNzEwODYwMDAwLCJleHAiOjE3MTE0NjQ4MDAsInRva2VuRXhwIjoxNzExNDY0ODAwfQ.PwVVrG2xkj2_LtWhFoeqF3EV7tEy9ERWMzQwmDKKVWE"; 
+            authContext.jwt_token = L"eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJhcHBLZXkiOiJzWUlqWGpqelFkMmJOQ2dYMXZKWU1BIiwiaWF0IjoxNzc0MDUwMDAwLCJleHAiOjE3NzY2NDIwMDAsInRva2VuRXhwIjoxNzc2NjQyMDAwfQ.FvUHWp548TiM3VP681SoGlJ09v-izkRqBVzpV0BKzgE"; 
             auth_service->SDKAuth(authContext);
         }
     }
