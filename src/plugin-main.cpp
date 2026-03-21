@@ -1,6 +1,5 @@
 #define WIN32_LEAN_AND_MEAN
 #include <windows.h>
-#include <tchar.h>
 #include <iostream>
 #include <obs-module.h>
 #include "zoom_sdk.h"
@@ -18,22 +17,18 @@ ZoomMeetingListener* meetingListener = nullptr;
 IAuthService* g_pAuthService = nullptr;
 IMeetingService* g_pMeetingService = nullptr;
 
-// --- 2. JOIN MEETING (REVISIONS BASED ON YOUR HEADER) ---
+// --- 2. JOIN MEETING LOGIC ---
 void JoinMeeting() {
     if (!g_pMeetingService) return;
 
     JoinParam joinParam;
-    // The header shows a constructor exists, but memset is safer for unions
-    memset(&joinParam, 0, sizeof(JoinParam)); 
-    
+    // We use the exact member name 'withoutloginuserJoin' from your header
     joinParam.userType = SDK_UT_WITHOUT_LOGIN;
-
-    // Based on your meeting_service_interface.h:
-    // The union member is 'withoutloginuserJoin'
     joinParam.param.withoutloginuserJoin.meetingNumber = 7723013754;
     joinParam.param.withoutloginuserJoin.userName = L"OBS Connector";
     joinParam.param.withoutloginuserJoin.psw = L""; 
     joinParam.param.withoutloginuserJoin.vanityID = nullptr;
+    joinParam.param.withoutloginuserJoin.userZAK = nullptr;
 
     SDKError err = g_pMeetingService->Join(joinParam);
     blog(LOG_INFO, "[Zoom] Join Meeting Attempt for 7723013754: %d", err);
@@ -61,7 +56,8 @@ public:
 class ZoomMeetingListener : public IMeetingServiceEvent {
 public:
     void onMeetingStatusChanged(MeetingStatus status, int iResult) override {
-        blog(LOG_INFO, "[Zoom] Meeting Status Changed: %d. (3 = In Meeting)", status);
+        // Status 3 = In Meeting
+        blog(LOG_INFO, "[Zoom] Meeting Status Changed: %d", status);
     }
     void onMeetingStatisticsWarningNotification(StatisticsWarningType type) override {}
     void onMeetingParameterNotification(const MeetingParameter* p) override {}
@@ -75,7 +71,7 @@ public:
 #endif
 };
 
-// --- 4. OBS SETUP ---
+// --- 4. OBS MODULE ENTRY ---
 static const char* get_p_name(void* unused) { return "Zoom Participant"; }
 static uint32_t get_w(void* d) { return 1280; }
 static uint32_t get_h(void* d) { return 720; }
@@ -99,7 +95,7 @@ bool obs_module_load(void) {
     obs_register_source(&z_part_info);
 
     InitParam initParam;
-    initParam.strWebDomain = _T("https://zoom.us");
+    initParam.strWebDomain = L"https://zoom.us";
     
     if (InitSDK(initParam) == SDKERR_SUCCESS) {
         if (CreateAuthService(&g_pAuthService) == SDKERR_SUCCESS) {
@@ -112,4 +108,16 @@ bool obs_module_load(void) {
             }
 
             AuthContext authContext;
-            authContext.jwt_token = _T("eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJhcHBLZXkiOiJZNzNqelFSbVF4aWhoNFo3MnFSMnRnIiwiaWF0IjoxNzc0MDUwMDAwLCJleHAiOjE3NzY2NDIwMD
+            // The JWT must be on one single line below:
+            authContext.jwt_token = L"eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJhcHBLZXkiOiJZNzNqelFSbVF4aWhoNFo3MnFSMnRnIiwiaWF0IjoxNzc0MDUwMDAwLCJleHAiOjE3NzY2NDIwMDAsInRva2VuRXhwIjoxNzc2NjQyMDAwLCJyb2xlIjoxLCJ1c2VyRW1haWwiOiJEYXZpZEBMZXRzRG9WaWRlby5jb20ifQ.1ldmzxzK-gdzWJkxr7KkkwnYq8qEnbMGVTJFihAhuEA";
+            
+            g_pAuthService->SDKAuth(authContext);
+        }
+    }
+    return true;
+}
+
+void obs_module_unload(void) {
+    // Clean up to prevent crashes on OBS exit
+    if (g_pAuthService) Cleanupsdk();
+}
