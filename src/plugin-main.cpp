@@ -2,11 +2,7 @@
 #include <windows.h>
 #include <tchar.h>
 #include <iostream>
-
-// OBS Header
 #include <obs-module.h>
-
-// Zoom SDK Headers
 #include "zoom_sdk.h"
 #include "auth_service_interface.h"
 #include "meeting_service_interface.h"
@@ -14,12 +10,45 @@
 
 using namespace ZOOMSDK;
 
-// --- 1. ZOOM LISTENERS ---
+// --- 1. GLOBAL INSTANCES ---
+class ZoomAuthListener;
+class ZoomMeetingListener;
+ZoomAuthListener* authListener = nullptr;
+ZoomMeetingListener* meetingListener = nullptr;
+IAuthService* g_pAuthService = nullptr;
+IMeetingService* g_pMeetingService = nullptr;
+
+// --- 2. THE LOGIC TO JOIN YOUR MEETING ---
+void JoinMeeting() {
+    if (!g_pMeetingService) return;
+
+    // Your provided Meeting ID. No password required.
+    const wchar_t* meetingNumber = L"7723013754"; 
+    const wchar_t* meetingPassword = L""; 
+    const wchar_t* displayName = L"OBS Connector";
+
+    JoinParam joinParam;
+    joinParam.userType = SDK_UT_WITHOUT_LOGIN;
+    JoinParam4WithoutLogin& withoutLoginParam = joinParam.param.without_login_param;
+    
+    withoutLoginParam.meetingNumber = _wtoi64(meetingNumber);
+    withoutLoginParam.userName = displayName;
+    withoutLoginParam.psw = meetingPassword;
+    withoutLoginParam.vanityID = nullptr;
+
+    SDKError err = g_pMeetingService->Join(joinParam);
+    blog(LOG_INFO, "[Zoom] Join Meeting Attempt for 7723013754: %d", err);
+}
+
+// --- 3. LISTENERS ---
 class ZoomAuthListener : public IAuthServiceEvent {
 public:
     void onAuthenticationReturn(AuthResult ret) override { 
-        // 0 = SDKERR_SUCCESS. If you see 0 in the log, you are officially connected to Zoom.
         blog(LOG_INFO, "[Zoom] Auth Return Code: %d", ret); 
+        if (ret == AUTHRET_SUCCESS) {
+            blog(LOG_INFO, "[Zoom] Auth Successful! Joining meeting 7723013754...");
+            JoinMeeting(); 
+        }
     }
     void onLoginReturnWithReason(LOGINSTATUS ret, IAccountInfo* p, LoginFailReason r) override {}
     void onLogout() override {}
@@ -33,7 +62,8 @@ public:
 class ZoomMeetingListener : public IMeetingServiceEvent {
 public:
     void onMeetingStatusChanged(MeetingStatus status, int iResult) override {
-        blog(LOG_INFO, "[Zoom] Meeting Status: %d", status);
+        // Status 2 means you are successfully in the room
+        blog(LOG_INFO, "[Zoom] Meeting Status Changed: %d", status);
     }
     void onMeetingStatisticsWarningNotification(StatisticsWarningType type) override {}
     void onMeetingParameterNotification(const MeetingParameter* p) override {}
@@ -47,51 +77,20 @@ public:
 #endif
 };
 
-class ZoomRecordingListener : public IMeetingRecordingCtrlEvent {
-public:
-    void onRecordingStatus(RecordingStatus s) override {}
-    void onCloudRecordingStatus(RecordingStatus s) override {}
-    void onRecordPrivilegeChanged(bool b) override {}
-    void onLocalRecordingPrivilegeRequestStatus(RequestLocalRecordingStatus s) override {}
-    void onRequestCloudRecordingResponse(RequestStartCloudRecordingStatus s) override {}
-    void onLocalRecordingPrivilegeRequested(IRequestLocalRecordingPrivilegeHandler* h) override {}
-    void onStartCloudRecordingRequested(IRequestStartCloudRecordingHandler* h) override {}
-    void onCloudRecordingStorageFull(time_t g) override {}
-    void onEnableAndStartSmartRecordingRequested(IRequestEnableAndStartSmartRecordingHandler* h) override {}
-    void onSmartRecordingEnableActionCallback(ISmartRecordingEnableActionHandler* h) override {}
-#if defined(WIN32)
-    void onRecording2MP4Done(bool b, int i, const zchar_t* s) override {}
-    void onRecording2MP4Processing(int i) override {}
-    void onCustomizedLocalRecordingSourceNotification(ICustomizedLocalRecordingLayoutHelper* l) override {}
-#endif
-};
-
-// --- 2. GLOBAL INSTANCES ---
-ZoomAuthListener authListener;
-ZoomMeetingListener meetingListener;
-IAuthService* g_pAuthService = nullptr;
-IMeetingService* g_pMeetingService = nullptr;
-
-// --- 3. OBS SOURCE STUBS ---
-// These fix the 'get_width' / 'get_height' errors in your OBS log.
+// --- 4. OBS SETUP ---
 static const char* get_p_name(void* unused) { return "Zoom Participant"; }
-static const char* get_g_name(void* unused) { return "Zoom Gallery"; }
-static const char* get_s_name(void* unused) { return "Zoom Screenshare"; }
 static uint32_t get_w(void* d) { return 1280; }
 static uint32_t get_h(void* d) { return 720; }
 static void* create_stub(obs_data_t* s, obs_source_t* src) { return (void*)1; }
 static void destroy_stub(void* d) {}
 
 struct obs_source_info z_part_info = {};
-struct obs_source_info z_gall_info = {};
-struct obs_source_info z_shared_info = {};
 
-// --- 4. OBS MODULE LOAD ---
 OBS_DECLARE_MODULE()
 OBS_MODULE_USE_DEFAULT_LOCALE("obs-zoom-connector", "en-US")
 
 bool obs_module_load(void) {
-    // Register Sources
+    // Register the source so it shows up in OBS
     z_part_info.id = "zoom_participant_source";
     z_part_info.type = OBS_SOURCE_TYPE_INPUT;
     z_part_info.output_flags = OBS_SOURCE_VIDEO;
@@ -102,45 +101,23 @@ bool obs_module_load(void) {
     z_part_info.get_height = get_h;
     obs_register_source(&z_part_info);
 
-    z_gall_info.id = "zoom_gallery_source";
-    z_gall_info.type = OBS_SOURCE_TYPE_INPUT;
-    z_gall_info.output_flags = OBS_SOURCE_VIDEO;
-    z_gall_info.get_name = get_g_name;
-    z_gall_info.create = create_stub;
-    z_gall_info.destroy = destroy_stub;
-    z_gall_info.get_width = get_w;
-    z_gall_info.get_height = get_h;
-    obs_register_source(&z_gall_info);
-
-    z_shared_info.id = "zoom_screenshare_source";
-    z_shared_info.type = OBS_SOURCE_TYPE_INPUT;
-    z_shared_info.output_flags = OBS_SOURCE_VIDEO;
-    z_shared_info.get_name = get_s_name;
-    z_shared_info.create = create_stub;
-    z_shared_info.destroy = destroy_stub;
-    z_shared_info.get_width = get_w;
-    z_shared_info.get_height = get_h;
-    obs_register_source(&z_shared_info);
-
-    // Zoom Initialization
     InitParam initParam;
     initParam.strWebDomain = _T("https://zoom.us");
     
     if (InitSDK(initParam) == SDKERR_SUCCESS) {
-        blog(LOG_INFO, "[Zoom] SDK Initialized.");
-        
-        if (CreateAuthService(&g_pAuthService) == SDKERR_SUCCESS && g_pAuthService) {
-            g_pAuthService->SetEvent(&authListener);
+        if (CreateAuthService(&g_pAuthService) == SDKERR_SUCCESS) {
+            authListener = new ZoomAuthListener();
+            g_pAuthService->SetEvent(authListener);
             
-            AuthContext authContext;
-            // Your JWT is now integrated
-            authContext.jwt_token = _T("eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJhcHBLZXkiOiJZNzNqelFSbVF4aWhoNFo3MnFSMnRnIiwiaWF0IjoxNzc0MDUwMDAwLCJleHAiOjE3NzY2NDIwMDAsInRva2VuRXhwIjoxNzc2NjQyMDAwLCJyb2xlIjoxLCJ1c2VyRW1haWwiOiJEYXZpZEBMZXRzRG9WaWRlby5jb20ifQ.1ldmzxzK-gdzWJkxr7KkkwnYq8qEnbMGVTJFihAhuEA"); 
-            
-            if (g_pAuthService->SDKAuth(authContext) == SDKERR_SUCCESS) {
-                blog(LOG_INFO, "[Zoom] Auth request sent with provided JWT.");
+            if (CreateMeetingService(&g_pMeetingService) == SDKERR_SUCCESS) {
+                meetingListener = new ZoomMeetingListener();
+                g_pMeetingService->SetEvent(meetingListener);
             }
+
+            AuthContext authContext;
+            authContext.jwt_token = _T("eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJhcHBLZXkiOiJZNzNqelFSbVF4aWhoNFo3MnFSMnRnIiwiaWF0IjoxNzc0MDUwMDAwLCJleHAiOjE3NzY2NDIwMDAsInRva2VuRXhwIjoxNzc2NjQyMDAwLCJyb2xlIjoxLCJ1c2VyRW1haWwiOiJEYXZpZEBMZXRzRG9WaWRlby5jb20ifQ.1ldmzxzK-gdzWJkxr7KkkwnYq8qEnbMGVTJFihAhuEA");
+            g_pAuthService->SDKAuth(authContext);
         }
     }
-
     return true;
 }
