@@ -22,22 +22,20 @@ IMeetingService* g_pMeetingService = nullptr;
 void JoinMeeting() {
     if (!g_pMeetingService) return;
 
-    // Your provided Meeting ID. No password required.
-    const wchar_t* meetingNumber = L"7723013754"; 
-    const wchar_t* meetingPassword = L""; 
-    const wchar_t* displayName = L"OBS Connector";
-
+    // Meeting: 772 301 3754
     JoinParam joinParam;
-    joinParam.userType = SDK_UT_WITHOUT_LOGIN;
-    JoinParam4WithoutLogin& withoutLoginParam = joinParam.param.without_login_param;
+    memset(&joinParam, 0, sizeof(JoinParam)); // Clear memory to prevent garbage data
     
-    withoutLoginParam.meetingNumber = _wtoi64(meetingNumber);
-    withoutLoginParam.userName = displayName;
-    withoutLoginParam.psw = meetingPassword;
-    withoutLoginParam.vanityID = nullptr;
+    joinParam.userType = SDK_UT_WITHOUT_LOGIN;
+    
+    // Using the direct pointer assignment to satisfy the compiler
+    joinParam.param.without_login_param.meetingNumber = 7723013754;
+    joinParam.param.without_login_param.userName = L"OBS Connector";
+    joinParam.param.without_login_param.psw = L""; 
+    joinParam.param.without_login_param.vanityID = nullptr;
 
     SDKError err = g_pMeetingService->Join(joinParam);
-    blog(LOG_INFO, "[Zoom] Join Meeting Attempt for 7723013754: %d", err);
+    blog(LOG_INFO, "[Zoom] Join Meeting Attempt: %d", err);
 }
 
 // --- 3. LISTENERS ---
@@ -46,7 +44,7 @@ public:
     void onAuthenticationReturn(AuthResult ret) override { 
         blog(LOG_INFO, "[Zoom] Auth Return Code: %d", ret); 
         if (ret == AUTHRET_SUCCESS) {
-            blog(LOG_INFO, "[Zoom] Auth Successful! Joining meeting 7723013754...");
+            blog(LOG_INFO, "[Zoom] Auth Successful! Joining meeting...");
             JoinMeeting(); 
         }
     }
@@ -62,7 +60,6 @@ public:
 class ZoomMeetingListener : public IMeetingServiceEvent {
 public:
     void onMeetingStatusChanged(MeetingStatus status, int iResult) override {
-        // Status 2 means you are successfully in the room
         blog(LOG_INFO, "[Zoom] Meeting Status Changed: %d", status);
     }
     void onMeetingStatisticsWarningNotification(StatisticsWarningType type) override {}
@@ -90,7 +87,6 @@ OBS_DECLARE_MODULE()
 OBS_MODULE_USE_DEFAULT_LOCALE("obs-zoom-connector", "en-US")
 
 bool obs_module_load(void) {
-    // Register the source so it shows up in OBS
     z_part_info.id = "zoom_participant_source";
     z_part_info.type = OBS_SOURCE_TYPE_INPUT;
     z_part_info.output_flags = OBS_SOURCE_VIDEO;
