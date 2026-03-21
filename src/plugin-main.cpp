@@ -3,11 +3,11 @@
 #include <string>
 #include <windows.h>
 
-// 1. Master Dictionaries FIRST
+// 1. Master Dictionaries
 #include "zoom_sdk_def.h"
 #include "zoom_sdk_raw_data_def.h"
 
-// 2. Core Engine NEXT
+// 2. Core Engine
 #include "zoom_sdk.h"
 #include "auth_service_interface.h"
 #include "meeting_service_interface.h"
@@ -17,7 +17,7 @@
 #include "meeting_service_components/meeting_participants_ctrl_interface.h"
 #include "meeting_service_components/meeting_recording_interface.h"
 
-// 4. Raw Data LAST
+// 4. Raw Data
 #include "rawdata/rawdata_renderer_interface.h"
 #include "rawdata/zoom_rawdata_api.h"
 
@@ -137,6 +137,7 @@ public:
                 ZOOM_SDK_NAMESPACE::IMeetingRecordingController* rec_ctrl = meeting_service->GetMeetingRecordingController();
                 if (rec_ctrl) {
                     rec_ctrl->SetEvent(&g_recordingListener);
+                    // Since we are Role 1, we simulate privilege check
                     g_recordingListener.onRecordPrivilegeChanged(true);
                 }
             }
@@ -155,33 +156,12 @@ public:
 };
 static ZoomMeetingListener g_meetingListener;
 
-// --- FIXED ZOOM AUTH LISTENER (VERIFIED FOR SDK 6.7.5) ---
+// --- THE ZOOM AUTH LISTENER (REVERTED TO WORKING GUEST JOIN) ---
 class ZoomAuthListener : public ZOOM_SDK_NAMESPACE::IAuthServiceEvent {
 public:
     virtual void onAuthenticationReturn(ZOOM_SDK_NAMESPACE::AuthResult ret) override {
         if (ret == ZOOM_SDK_NAMESPACE::AUTHRET_SUCCESS) {
-            blog(LOG_INFO, "[Zoom to OBS] SDK Auth Success. Launching Browser Login...");
-            
-            ZOOM_SDK_NAMESPACE::IAuthService* auth_service = nullptr;
-            ZOOM_SDK_NAMESPACE::CreateAuthService(&auth_service);
-            
-            if (auth_service) {
-                // FIXED: Use scoped enum and internal union name 'ssoLogin' from your SDK headers
-                ZOOM_SDK_NAMESPACE::LoginParam loginParam;
-                memset(&loginParam, 0, sizeof(ZOOM_SDK_NAMESPACE::LoginParam));
-                
-                loginParam.ut = ZOOM_SDK_NAMESPACE::LoginType::LoginType_SSO; 
-                loginParam.param.ssoLogin.ssoToken = nullptr; 
-                
-                auth_service->Login(loginParam); 
-            }
-        }
-    }
-
-    virtual void onLoginReturnWithReason(ZOOM_SDK_NAMESPACE::LOGINSTATUS ret, ZOOM_SDK_NAMESPACE::IAccountInfo* pAccountInfo, ZOOM_SDK_NAMESPACE::LoginFailReason reason) override {
-        // FIXED: Use scoped LOGINSTATUS::LOGIN_SUCCESS enum
-        if (ret == ZOOM_SDK_NAMESPACE::LOGINSTATUS::LOGIN_SUCCESS) { 
-            blog(LOG_INFO, "[Zoom to OBS] Browser Login Success! Joining meeting...");
+            blog(LOG_INFO, "[Zoom to OBS] SDK Auth Success. Joining as Guest...");
             
             ZOOM_SDK_NAMESPACE::IMeetingService* meeting_service = nullptr;
             ZOOM_SDK_NAMESPACE::CreateMeetingService(&meeting_service);
@@ -190,22 +170,20 @@ public:
                 meeting_service->SetEvent(&g_meetingListener);
                 
                 ZOOM_SDK_NAMESPACE::JoinParam joinParam;
-                // Since user is logged in, we use LOGGEDIN user type
-                joinParam.userType = ZOOM_SDK_NAMESPACE::SDK_UT_LOGGEDIN;
+                joinParam.userType = ZOOM_SDK_NAMESPACE::SDK_UT_WITHOUT_LOGIN;
                 
-                ZOOM_SDK_NAMESPACE::JoinParam4LoggedInJoin& param = joinParam.param.loggedinuserJoin;
+                ZOOM_SDK_NAMESPACE::JoinParam4WithoutLogin& param = joinParam.param.withoutloginuserJoin;
                 param.meetingNumber = 7723013754ULL; 
                 param.userName = L"OBS Host Bot";
+                param.psw = L""; 
                 param.isAudioOff = true;
                 param.isVideoOff = true;
 
                 meeting_service->Join(joinParam);
             }
-        } else {
-            blog(LOG_ERROR, "[Zoom to OBS] Login failed. Reason code: %d", (int)reason);
         }
     }
-
+    virtual void onLoginReturnWithReason(ZOOM_SDK_NAMESPACE::LOGINSTATUS ret, ZOOM_SDK_NAMESPACE::IAccountInfo* pAccountInfo, ZOOM_SDK_NAMESPACE::LoginFailReason reason) override {}
     virtual void onLogout() override {}
     virtual void onZoomIdentityExpired() override {}
     virtual void onZoomAuthIdentityExpired() override {}
