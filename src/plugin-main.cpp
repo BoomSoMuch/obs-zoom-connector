@@ -159,16 +159,16 @@ public:
 };
 static ZoomAuthListener g_authListener;
 
-// --- NEW: THE PARTICIPANT CONTROLLER SOURCE ---
-class ZoomSource {
+// --- SOURCE CLASSES ---
+class ZoomParticipantSource {
 public:
     obs_source_t* source;
     unsigned int current_user_id = 0;
 
-    ZoomSource(obs_source_t* src) : source(src) {
+    ZoomParticipantSource(obs_source_t* src) : source(src) {
         g_participantSource = source;
     }
-    ~ZoomSource() {
+    ~ZoomParticipantSource() {
         if (g_participantSource == source) g_participantSource = nullptr;
     }
 
@@ -179,22 +179,26 @@ public:
             g_videoRenderer->unSubscribe();
             if (current_user_id != 0) {
                 g_videoRenderer->subscribe(current_user_id, ZOOM_SDK_NAMESPACE::RAW_DATA_TYPE_VIDEO);
-                blog(LOG_INFO, "[Zoom to OBS] Switching to User ID: %u", current_user_id);
             }
         }
     }
 };
 
+class ZoomScreenshareSource {
+public:
+    obs_source_t* source;
+    ZoomScreenshareSource(obs_source_t* src) : source(src) {}
+};
+
+// --- OBS CALLBACKS ---
 static obs_properties_t* zp_properties(void* data) {
     obs_properties_t* props = obs_properties_create();
     obs_property_t* list = obs_properties_add_list(props, "participant_id", "Zoom Participant", OBS_COMBO_TYPE_LIST, OBS_COMBO_FORMAT_INT);
-    
     obs_property_list_add_int(list, "--- Select User ---", 0);
 
     ZOOM_SDK_NAMESPACE::IMeetingService* meeting_service = nullptr;
     ZOOM_SDK_NAMESPACE::CreateMeetingService(&meeting_service);
     if (meeting_service) {
-        // VERIFIED: Correct method name for 6.7.5 headers
         ZOOM_SDK_NAMESPACE::IMeetingParticipantsController* part_ctrl = meeting_service->GetMeetingParticipantsController();
         if (part_ctrl) {
             ZOOM_SDK_NAMESPACE::IList<unsigned int>* userList = part_ctrl->GetParticipantsList();
@@ -203,7 +207,6 @@ static obs_properties_t* zp_properties(void* data) {
                     unsigned int uid = userList->GetItem(i);
                     ZOOM_SDK_NAMESPACE::IUserInfo* info = part_ctrl->GetUserByUserID(uid);
                     if (info) {
-                        // VERIFIED: Wide to Multi-byte conversion for OBS UI
                         std::wstring wname = info->GetUserName();
                         int size_needed = WideCharToMultiByte(CP_UTF8, 0, &wname[0], (int)wname.size(), NULL, 0, NULL, NULL);
                         std::string name(size_needed, 0);
@@ -217,26 +220,40 @@ static obs_properties_t* zp_properties(void* data) {
     return props;
 }
 
-void* zp_create(obs_data_t* settings, obs_source_t* source) { return new ZoomSource(source); }
-void z_destroy(void* data) { delete static_cast<ZoomSource*>(data); }
-void zp_update(void* data, obs_data_t* settings) { static_cast<ZoomSource*>(data)->update(settings); }
+void* zp_create(obs_data_t* settings, obs_source_t* source) { return new ZoomParticipantSource(source); }
+void zp_destroy(void* data) { delete static_cast<ZoomParticipantSource*>(data); }
+void zp_update(void* data, obs_data_t* settings) { static_cast<ZoomParticipantSource*>(data)->update(settings); }
 
+void* zs_create(obs_data_t* settings, obs_source_t* source) { return new ZoomScreenshareSource(source); }
+void zs_destroy(void* data) { delete static_cast<ZoomScreenshareSource*>(data); }
+
+// --- MODULE REGISTRATION ---
 struct obs_source_info zoom_participant_info = {};
+struct obs_source_info zoom_screenshare_info = {};
 
 OBS_DECLARE_MODULE()
 OBS_MODULE_USE_DEFAULT_LOCALE("obs-zoom-connector", "en-US")
 
 bool obs_module_load(void) {
+    // Register Participant Source
     zoom_participant_info.id = "zoom_participant_source";
     zoom_participant_info.type = OBS_SOURCE_TYPE_INPUT;
     zoom_participant_info.output_flags = OBS_SOURCE_ASYNC_VIDEO;
     zoom_participant_info.get_name = [](void*) { return "Zoom Participant"; };
     zoom_participant_info.create = zp_create;
-    zoom_participant_info.destroy = z_destroy;
+    zoom_participant_info.destroy = zp_destroy;
     zoom_participant_info.get_properties = zp_properties;
     zoom_participant_info.update = zp_update;
-
     obs_register_source(&zoom_participant_info);
+
+    // Register Screenshare Source (Visual Placeholder for Teaser)
+    zoom_screenshare_info.id = "zoom_screenshare_source";
+    zoom_screenshare_info.type = OBS_SOURCE_TYPE_INPUT;
+    zoom_screenshare_info.output_flags = OBS_SOURCE_ASYNC_VIDEO;
+    zoom_screenshare_info.get_name = [](void*) { return "Zoom Screenshare"; };
+    zoom_screenshare_info.create = zs_create;
+    zoom_screenshare_info.destroy = zs_destroy;
+    obs_register_source(&zoom_screenshare_info);
 
     ZOOM_SDK_NAMESPACE::InitParam initParam;
     initParam.strWebDomain = L"https://zoom.us";
