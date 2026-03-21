@@ -169,7 +169,6 @@ public:
         if (selected_id != current_user_id && g_videoRenderer) {
             current_user_id = selected_id;
             g_videoRenderer->unSubscribe();
-            // ID 1 is a special SDK flag for Active Speaker
             if (current_user_id != 0) g_videoRenderer->subscribe(current_user_id, ZOOM_SDK_NAMESPACE::RAW_DATA_TYPE_VIDEO);
         }
     }
@@ -181,17 +180,19 @@ public:
     ZoomScreenshareSource(obs_source_t* src) : source(src) {}
 };
 
-// --- PROPERTIES (FIXED ERRORS & ADDED ACTIVE SPEAKER) ---
+// --- PROPERTIES (Verified Logic) ---
 static obs_properties_t* zp_properties(void* data) {
     obs_properties_t* props = obs_properties_create();
+    
+    // Alpha Label
     obs_properties_add_text(props, "ver_label", "ISO for OBS (v0.1 Alpha)", OBS_TEXT_INFO);
 
+    // Active Status via IMeetingInfo
     std::string status_text = "Status: Disconnected";
     ZOOM_SDK_NAMESPACE::IMeetingService* meeting_service = nullptr;
     ZOOM_SDK_NAMESPACE::CreateMeetingService(&meeting_service);
     if (meeting_service) {
         if (meeting_service->GetMeetingStatus() == ZOOM_SDK_NAMESPACE::MEETING_STATUS_INMEETING) {
-            // FIXED: Path to meeting number via IMeetingInfo
             ZOOM_SDK_NAMESPACE::IMeetingInfo* info = meeting_service->GetMeetingInfo();
             if (info) status_text = "Status: Connected to Meeting " + std::to_string(info->GetMeetingNumber());
         }
@@ -200,8 +201,6 @@ static obs_properties_t* zp_properties(void* data) {
 
     obs_property_t* list = obs_properties_add_list(props, "participant_id", "Select Participant", OBS_COMBO_TYPE_LIST, OBS_COMBO_FORMAT_INT);
     obs_property_list_add_int(list, "--- Select User ---", 0);
-    
-    // NEW: Active Speaker Entry
     obs_property_list_add_int(list, "[Active Speaker]", 1); 
 
     if (meeting_service) {
@@ -239,7 +238,6 @@ OBS_DECLARE_MODULE()
 OBS_MODULE_USE_DEFAULT_LOCALE("obs-zoom-connector", "en-US")
 
 bool obs_module_load(void) {
-    // 1. Participant Source
     zoom_participant_info.id = "zoom_participant_source";
     zoom_participant_info.type = OBS_SOURCE_TYPE_INPUT;
     zoom_participant_info.output_flags = OBS_SOURCE_ASYNC_VIDEO;
@@ -248,12 +246,9 @@ bool obs_module_load(void) {
     zoom_participant_info.destroy = zp_destroy;
     zoom_participant_info.get_properties = zp_properties;
     zoom_participant_info.update = zp_update;
-    
-    // Set to CUSTOM - OBS will now look for zoom_participant_source.png
     zoom_participant_info.icon_type = OBS_ICON_TYPE_CUSTOM; 
     obs_register_source(&zoom_participant_info);
 
-    // 2. Screenshare Source
     zoom_screenshare_info.id = "zoom_screenshare_source";
     zoom_screenshare_info.type = OBS_SOURCE_TYPE_INPUT;
     zoom_screenshare_info.output_flags = OBS_SOURCE_ASYNC_VIDEO;
@@ -262,11 +257,6 @@ bool obs_module_load(void) {
     zoom_screenshare_info.destroy = zs_destroy;
     zoom_screenshare_info.icon_type = OBS_ICON_TYPE_CUSTOM;
     obs_register_source(&zoom_screenshare_info);
-
-    // [SDK INIT REMAINS THE SAME]
-    // ...
-
-    // ... [REST OF THE SDK INIT LOGIC REMAINS UNTOUCHED] ...
 
     ZOOM_SDK_NAMESPACE::InitParam initParam;
     initParam.strWebDomain = L"https://zoom.us";
