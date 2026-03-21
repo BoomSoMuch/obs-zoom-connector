@@ -1,24 +1,20 @@
-// 1. Mandatory Windows system headers must come BEFORE Zoom headers
 #define WIN32_LEAN_AND_MEAN
 #include <windows.h>
 #include <tchar.h>
-
-// 2. Zoom SDK headers
-#include "zoom_sdk.h"
-#include "meeting_service_interface.h"
-#include "auth_service_interface.h"
-// Path corrected based on your folder structure
-#include "meeting_service_components/meeting_recording_interface.h"
-
 #include <iostream>
 
-// Use the namespace to ensure CreateSDKInst is found
+// Zoom SDK Headers - Order and pathing is critical
+#include "zoom_sdk.h"
+#include "auth_service_interface.h"
+#include "meeting_service_interface.h"
+#include "meeting_service_components/meeting_recording_interface.h"
+
 using namespace ZOOMSDK;
 
 // --- AUTH LISTENER ---
 class ZoomAuthListener : public IAuthServiceEvent {
 public:
-    void onAuthenticationReturn(AuthResult ret) override { std::cout << "Auth: " << ret << std::endl; }
+    void onAuthenticationReturn(AuthResult ret) override { std::cout << "Auth Status: " << ret << std::endl; }
     void onLoginReturnWithReason(LOGINSTATUS ret, IAccountInfo* pAccountInfo, LoginFailReason reason) override {}
     void onLogout() override {}
     void onZoomIdentityExpired() override {}
@@ -31,7 +27,7 @@ public:
 // --- MEETING LISTENER ---
 class ZoomMeetingListener : public IMeetingServiceEvent {
 public:
-    void onMeetingStatusChanged(MeetingStatus status, int iResult) override { std::cout << "Status: " << status << std::endl; }
+    void onMeetingStatusChanged(MeetingStatus status, int iResult) override { std::cout << "Meeting: " << status << std::endl; }
     void onMeetingStatisticsWarningNotification(StatisticsWarningType type) override {}
     void onMeetingParameterNotification(const MeetingParameter* meeting_param) override {}
     void onSuspendParticipantsActivities() override {}
@@ -47,6 +43,7 @@ public:
 // --- RECORDING LISTENER ---
 class ZoomRecordingListener : public IMeetingRecordingCtrlEvent {
 public:
+    // Core Overrides
     void onRecordingStatus(RecordingStatus status) override {}
     void onCloudRecordingStatus(RecordingStatus status) override {}
     void onRecordPrivilegeChanged(bool bCanRec) override {}
@@ -55,43 +52,45 @@ public:
     void onLocalRecordingPrivilegeRequested(IRequestLocalRecordingPrivilegeHandler* handler) override {}
     void onStartCloudRecordingRequested(IRequestStartCloudRecordingHandler* handler) override {}
     void onCloudRecordingStorageFull(time_t gracePeriodDate) override {}
+    
+    // Smart Recording Overrides (Found in your latest file)
     void onEnableAndStartSmartRecordingRequested(IRequestEnableAndStartSmartRecordingHandler* handler) override {}
     void onSmartRecordingEnableActionCallback(ISmartRecordingEnableActionHandler* handler) override {}
+
 #if defined(WIN32)
+    // Windows Transcoding Overrides
     void onRecording2MP4Done(bool bsuccess, int iResult, const zchar_t* szPath) override {}
     void onRecording2MP4Processing(int iPercentage) override {}
     void onCustomizedLocalRecordingSourceNotification(ICustomizedLocalRecordingLayoutHelper* layout_helper) override {}
 #endif
 };
 
-// Global pointers and listeners
+// Global Service Pointers and Listeners
 ZoomAuthListener authListener;
 ZoomMeetingListener meetingListener;
 ZoomRecordingListener recordingListener;
-IZoomSDK* g_pSDKInst = nullptr; 
+
+IAuthService* g_pAuthService = nullptr;
+IMeetingService* g_pMeetingService = nullptr;
 
 extern "C" __declspec(dllexport) bool InitializeSDK(const char* jwt) {
     InitParam initParam;
     initParam.strWebDomain = _T("https://zoom.us");
     
-    // Explicitly use the ZOOMSDK namespace for the creation function
-    SDKError err = ZOOMSDK::CreateSDKInst(&g_pSDKInst);
-    
-    if (err != SDKERR_SUCCESS || !g_pSDKInst) {
-        return false;
+    // 1. Direct call to global Init (as per your zoom_sdk.h)
+    SDKError err = InitSDK(initParam);
+    if (err != SDKERR_SUCCESS) return false;
+
+    // 2. Create services using global factory functions
+    err = CreateAuthService(&g_pAuthService);
+    if (err == SDKERR_SUCCESS && g_pAuthService) {
+        g_pAuthService->SetEvent(&authListener);
     }
 
-    err = g_pSDKInst->InitSDK(initParam);
-    if (err != SDKERR_SUCCESS) {
-        return false;
+    err = CreateMeetingService(&g_pMeetingService);
+    if (err == SDKERR_SUCCESS && g_pMeetingService) {
+        g_pMeetingService->SetEvent(&meetingListener);
     }
-
-    // Link our listeners
-    IAuthService* pAuth = g_pSDKInst->GetAuthService();
-    if (pAuth) pAuth->SetEvent(&authListener);
-
-    IMeetingService* pMeeting = g_pSDKInst->GetMeetingService();
-    if (pMeeting) pMeeting->SetEvent(&meetingListener);
 
     return true;
 }
