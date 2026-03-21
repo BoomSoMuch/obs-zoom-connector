@@ -129,8 +129,8 @@ public:
             if (auth) {
                 ZOOM_SDK_NAMESPACE::LoginParam lp;
                 lp.ut = ZOOM_SDK_NAMESPACE::LoginType_Email;
-                lp.param.emailLogin.userName = L"YOUR_EMAIL_HERE";
-                lp.param.emailLogin.password = L"YOUR_PASSWORD_HERE";
+                lp.param.emailLogin.userName = L"David@LetsDoVideo.com";
+                lp.param.emailLogin.password = L"1nSecure";
                 lp.param.emailLogin.bRememberMe = true;
                 auth->Login(lp);
             }
@@ -171,4 +171,63 @@ static ZoomAuthListener g_authListener;
 class ZoomSource {
 public:
     obs_source_t* source;
-    std::string
+    std::string type;
+    ZoomSource(obs_source_t* src, const std::string& t) : source(src), type(t) {
+        if (type == "Participant") g_participantSource = source;
+    }
+    ~ZoomSource() { if (type == "Participant") g_participantSource = nullptr; }
+};
+
+void* zg_create(obs_data_t* s, obs_source_t* src) { return new ZoomSource(src, "Gallery"); }
+void* zp_create(obs_data_t* s, obs_source_t* src) { return new ZoomSource(src, "Participant"); }
+void* zs_create(obs_data_t* s, obs_source_t* src) { return new ZoomSource(src, "Screenshare"); }
+void z_destroy(void* d) { delete static_cast<ZoomSource*>(d); }
+
+struct obs_source_info zoom_p_info = {};
+struct obs_source_info zoom_s_info = {};
+struct obs_source_info zoom_g_info = {};
+
+OBS_DECLARE_MODULE()
+OBS_MODULE_USE_DEFAULT_LOCALE("obs-zoom-connector", "en-US")
+
+bool obs_module_load(void) {
+    zoom_p_info.id = "zoom_participant_source";
+    zoom_p_info.type = OBS_SOURCE_TYPE_INPUT;
+    zoom_p_info.output_flags = OBS_SOURCE_ASYNC_VIDEO;
+    zoom_p_info.get_name = [](void*) { return "Zoom Participant"; };
+    zoom_p_info.create = zp_create;
+    zoom_p_info.destroy = z_destroy;
+
+    zoom_s_info.id = "zoom_screenshare_source";
+    zoom_s_info.type = OBS_SOURCE_TYPE_INPUT;
+    zoom_s_info.output_flags = OBS_SOURCE_ASYNC_VIDEO;
+    zoom_s_info.get_name = [](void*) { return "Zoom Screenshare"; };
+    zoom_s_info.create = zs_create;
+    zoom_s_info.destroy = z_destroy;
+
+    zoom_g_info.id = "zoom_gallery_source";
+    zoom_g_info.type = OBS_SOURCE_TYPE_INPUT;
+    zoom_g_info.output_flags = OBS_SOURCE_ASYNC_VIDEO;
+    zoom_g_info.get_name = [](void*) { return "Zoom Gallery"; };
+    zoom_g_info.create = zg_create;
+    zoom_g_info.destroy = z_destroy;
+
+    obs_register_source(&zoom_p_info);
+    obs_register_source(&zoom_s_info);
+    obs_register_source(&zoom_g_info);
+
+    ZOOM_SDK_NAMESPACE::InitParam ip;
+    ip.strWebDomain = L"https://zoom.us";
+    if (ZOOM_SDK_NAMESPACE::InitSDK(ip) == ZOOM_SDK_NAMESPACE::SDKERR_SUCCESS) {
+        ZOOM_SDK_NAMESPACE::IAuthService* auth = nullptr;
+        if (ZOOM_SDK_NAMESPACE::CreateAuthService(&auth) == ZOOM_SDK_NAMESPACE::SDKERR_SUCCESS && auth) {
+            auth->SetEvent(&g_authListener);
+            ZOOM_SDK_NAMESPACE::AuthContext ac;
+            ac.jwt_token = L"eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJhcHBLZXkiOiJZNzNqelFSbVF4aWhoNFo3MnFSMnRnIiwiaWF0IjoxNzc0MDUwMDAwLCJleHAiOjE3NzY2NDIwMDAsInRva2VuRXhwIjoxNzc2NjQyMDAwfQ.xCGQuoIhgbAjAkj9Mvm4NCVLUtwuEKuyxo9riRLX2A4"; 
+            auth->SDKAuth(ac);
+        }
+    }
+    return true;
+}
+
+void obs_module_unload(void) {}
