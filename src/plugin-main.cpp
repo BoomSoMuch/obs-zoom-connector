@@ -133,4 +133,85 @@ public:
     virtual void onAuthenticationReturn(ZOOM_SDK_NAMESPACE::AuthResult ret) override {
         if (ret == ZOOM_SDK_NAMESPACE::AUTHRET_SUCCESS) {
             ZOOM_SDK_NAMESPACE::IMeetingService* meeting_service = nullptr;
-            ZOOM_SDK
+            ZOOM_SDK_NAMESPACE::CreateMeetingService(&meeting_service);
+            if (meeting_service) {
+                meeting_service->SetEvent(&g_meetingListener);
+                ZOOM_SDK_NAMESPACE::JoinParam joinParam;
+                joinParam.userType = ZOOM_SDK_NAMESPACE::SDK_UT_WITHOUT_LOGIN;
+                ZOOM_SDK_NAMESPACE::JoinParam4WithoutLogin& param = joinParam.param.withoutloginuserJoin;
+                param.meetingNumber = 7723013754ULL; 
+                param.userName = L"ISO for OBS"; 
+                param.isAudioOff = true;
+                param.isVideoOff = true;
+                meeting_service->Join(joinParam);
+            }
+        }
+    }
+    virtual void onLoginReturnWithReason(ZOOM_SDK_NAMESPACE::LOGINSTATUS ret, ZOOM_SDK_NAMESPACE::IAccountInfo* pAccountInfo, ZOOM_SDK_NAMESPACE::LoginFailReason reason) override {}
+    virtual void onLogout() override {}
+    virtual void onZoomIdentityExpired() override {}
+    virtual void onZoomAuthIdentityExpired() override {}
+#if defined(WIN32)
+    virtual void onNotificationServiceStatus(ZOOM_SDK_NAMESPACE::SDKNotificationServiceStatus status, ZOOM_SDK_NAMESPACE::SDKNotificationServiceError error) override {}
+#endif
+};
+static ZoomAuthListener g_authListener;
+
+// --- SOURCE CLASSES ---
+class ZoomParticipantSource {
+public:
+    obs_source_t* source;
+    unsigned int current_user_id = 0;
+    ZoomParticipantSource(obs_source_t* src) : source(src) { g_participantSource = source; }
+    ~ZoomParticipantSource() { if (g_participantSource == source) g_participantSource = nullptr; }
+    void update(obs_data_t* settings) {
+        unsigned int selected_id = (unsigned int)obs_data_get_int(settings, "participant_id");
+        if (selected_id != current_user_id && g_videoRenderer) {
+            current_user_id = selected_id;
+            g_videoRenderer->unSubscribe();
+            if (current_user_id != 0) g_videoRenderer->subscribe(current_user_id, ZOOM_SDK_NAMESPACE::RAW_DATA_TYPE_VIDEO);
+        }
+    }
+};
+
+class ZoomScreenshareSource {
+public:
+    obs_source_t* source;
+    ZoomScreenshareSource(obs_source_t* src) : source(src) {}
+};
+
+// --- PROPERTIES (Verified Logic) ---
+static obs_properties_t* zp_properties(void* data) {
+    obs_properties_t* props = obs_properties_create();
+    
+    // Alpha Label
+    obs_properties_add_text(props, "ver_label", "ISO for OBS (v0.1 Alpha)", OBS_TEXT_INFO);
+
+    // Active Status via IMeetingInfo
+    std::string status_text = "Status: Disconnected";
+    ZOOM_SDK_NAMESPACE::IMeetingService* meeting_service = nullptr;
+    ZOOM_SDK_NAMESPACE::CreateMeetingService(&meeting_service);
+    if (meeting_service) {
+        if (meeting_service->GetMeetingStatus() == ZOOM_SDK_NAMESPACE::MEETING_STATUS_INMEETING) {
+            ZOOM_SDK_NAMESPACE::IMeetingInfo* info = meeting_service->GetMeetingInfo();
+            if (info) status_text = "Status: Connected to Meeting " + std::to_string(info->GetMeetingNumber());
+        }
+    }
+    obs_properties_add_text(props, "status_label", status_text.c_str(), OBS_TEXT_INFO);
+
+    obs_property_t* list = obs_properties_add_list(props, "participant_id", "Select Participant", OBS_COMBO_TYPE_LIST, OBS_COMBO_FORMAT_INT);
+    obs_property_list_add_int(list, "--- Select User ---", 0);
+    obs_property_list_add_int(list, "[Active Speaker]", 1); 
+
+    if (meeting_service) {
+        ZOOM_SDK_NAMESPACE::IMeetingParticipantsController* part_ctrl = meeting_service->GetMeetingParticipantsController();
+        if (part_ctrl) {
+            ZOOM_SDK_NAMESPACE::IList<unsigned int>* userList = part_ctrl->GetParticipantsList();
+            if (userList) {
+                for (int i = 0; i < userList->GetCount(); i++) {
+                    unsigned int uid = userList->GetItem(i);
+                    ZOOM_SDK_NAMESPACE::IUserInfo* info = part_ctrl->GetUserByUserID(uid);
+                    if (info) {
+                        std::wstring wname = info->GetUserName();
+                        
+                        // FILTER: Hide the bot
