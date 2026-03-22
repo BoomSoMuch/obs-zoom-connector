@@ -213,6 +213,63 @@ static obs_properties_t* zp_properties(void* data) {
                     ZOOM_SDK_NAMESPACE::IUserInfo* info = part_ctrl->GetUserByUserID(uid);
                     if (info) {
                         std::wstring wname = info->GetUserName();
-                    if (wname == L"ISO for OBS") continue;
-                        
-                        // FILTER: Hide the bot
+                        int size_needed = WideCharToMultiByte(CP_UTF8, 0, &wname[0], (int)wname.size(), NULL, 0, NULL, NULL);
+                        std::string name(size_needed, 0);
+                        WideCharToMultiByte(CP_UTF8, 0, &wname[0], (int)wname.size(), &name[0], size_needed, NULL, NULL);
+                        obs_property_list_add_int(list, name.c_str(), (long long)uid);
+                    }
+                }
+            }
+        }
+    }
+    return props;
+}
+
+void* zp_create(obs_data_t* settings, obs_source_t* source) { return new ZoomParticipantSource(source); }
+void zp_destroy(void* data) { delete static_cast<ZoomParticipantSource*>(data); }
+void zp_update(void* data, obs_data_t* settings) { static_cast<ZoomParticipantSource*>(data)->update(settings); }
+void* zs_create(obs_data_t* settings, obs_source_t* source) { return new ZoomScreenshareSource(source); }
+void zs_destroy(void* data) { delete static_cast<ZoomScreenshareSource*>(data); }
+
+struct obs_source_info zoom_participant_info = {};
+struct obs_source_info zoom_screenshare_info = {};
+
+OBS_DECLARE_MODULE()
+OBS_MODULE_USE_DEFAULT_LOCALE("obs-zoom-connector", "en-US")
+
+bool obs_module_load(void) {
+    zoom_participant_info.id = "zoom_participant_source";
+    zoom_participant_info.type = OBS_SOURCE_TYPE_INPUT;
+    zoom_participant_info.output_flags = OBS_SOURCE_ASYNC_VIDEO;
+    zoom_participant_info.get_name = [](void*) { return "Zoom Participant"; };
+    zoom_participant_info.create = zp_create;
+    zoom_participant_info.destroy = zp_destroy;
+    zoom_participant_info.get_properties = zp_properties;
+    zoom_participant_info.update = zp_update;
+    zoom_participant_info.icon_type = OBS_ICON_TYPE_CUSTOM; 
+    obs_register_source(&zoom_participant_info);
+
+    zoom_screenshare_info.id = "zoom_screenshare_source";
+    zoom_screenshare_info.type = OBS_SOURCE_TYPE_INPUT;
+    zoom_screenshare_info.output_flags = OBS_SOURCE_ASYNC_VIDEO;
+    zoom_screenshare_info.get_name = [](void*) { return "Zoom Screenshare"; };
+    zoom_screenshare_info.create = zs_create;
+    zoom_screenshare_info.destroy = zs_destroy;
+    zoom_screenshare_info.icon_type = OBS_ICON_TYPE_CUSTOM;
+    obs_register_source(&zoom_screenshare_info);
+
+    ZOOM_SDK_NAMESPACE::InitParam initParam;
+    initParam.strWebDomain = L"https://zoom.us";
+    if (ZOOM_SDK_NAMESPACE::InitSDK(initParam) == ZOOM_SDK_NAMESPACE::SDKERR_SUCCESS) {
+        ZOOM_SDK_NAMESPACE::IAuthService* auth_service = nullptr;
+        if (ZOOM_SDK_NAMESPACE::CreateAuthService(&auth_service) == ZOOM_SDK_NAMESPACE::SDKERR_SUCCESS && auth_service) {
+            auth_service->SetEvent(&g_authListener);
+            ZOOM_SDK_NAMESPACE::AuthContext authContext;
+            authContext.jwt_token = L"eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJhcHBLZXkiOiJZNzNqelFSbVF4aWhoNFo3MnFSMnRnIiwiaWF0IjoxNzc0MDUwMDAwLCJleHAiOjE3NzY2NDIwMDAsInRva2VuRXhwIjoxNzc2NjQyMDAwLCJyb2xlIjoxLCJ1c2VyRW1haWwiOiJEYXZpZEBMZXRzRG9WaWRlby5jb20ifQ.1ldmzxzK-gdzWJkxr7KkkwnYq8qEnbMGVTJFihAhuEA"; 
+            auth_service->SDKAuth(authContext);
+        }
+    }
+    return true;
+}
+
+void obs_module_unload(void) {}
