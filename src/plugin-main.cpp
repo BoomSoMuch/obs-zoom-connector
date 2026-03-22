@@ -213,5 +213,6 @@ static obs_properties_t* zp_properties(void* data) {
                     ZOOM_SDK_NAMESPACE::IUserInfo* info = part_ctrl->GetUserByUserID(uid);
                     if (info) {
                         std::wstring wname = info->GetUserName();
+                    if (wname == L"ISO for OBS") continue;
                         
                         // FILTER: Hide the bot
