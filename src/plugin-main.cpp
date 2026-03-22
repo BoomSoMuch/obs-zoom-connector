@@ -22,11 +22,11 @@
 #include "rawdata/rawdata_renderer_interface.h"
 #include "rawdata/zoom_rawdata_api.h"
 
-// --- [LOCKED] THE OBS VISUAL TARGET ---
+// --- [STABLE MVP] THE OBS VISUAL TARGET ---
 static obs_source_t* g_participantSource = nullptr;
 static uint64_t g_next_timestamp = 0;
 
-// --- [LOCKED] THE ZOOM VIDEO CATCHER ---
+// --- [STABLE MVP] THE ZOOM VIDEO CATCHER ---
 class ZoomVideoCatcher : public ZOOM_SDK_NAMESPACE::IZoomSDKRendererDelegate {
 public:
     virtual void onRawDataFrameReceived(YUVRawDataI420* data) override {
@@ -65,10 +65,11 @@ public:
 static ZoomVideoCatcher g_videoCatcher;
 static ZOOM_SDK_NAMESPACE::IZoomSDKRenderer* g_videoRenderer = nullptr;
 
-// --- [LOCKED] RECORDING & AUTH LISTENERS ---
+// --- [STABLE MVP] RECORDING & AUTH LISTENERS ---
 class ZoomRecordingListener : public ZOOM_SDK_NAMESPACE::IMeetingRecordingCtrlEvent {
 public:
     virtual void onRecordPrivilegeChanged(bool bCanRec) override {
+        // [MVP - Guest Join] Recording must still be granted by the host PC.
         if (bCanRec) {
             ZOOM_SDK_NAMESPACE::IMeetingService* meeting_service = nullptr;
             ZOOM_SDK_NAMESPACE::CreateMeetingService(&meeting_service);
@@ -93,9 +94,7 @@ public:
     virtual void onEnableAndStartSmartRecordingRequested(ZOOM_SDK_NAMESPACE::IRequestEnableAndStartSmartRecordingHandler* handler) override {}
     virtual void onSmartRecordingEnableActionCallback(ZOOM_SDK_NAMESPACE::ISmartRecordingEnableActionHandler* handler) override {}
 #if defined(WIN32)
-    // --- [VERIFIED WIN32 SIGNATURE] --- Correct zchar_t* parameter.
-    virtual void onRecordingMP4Done(bool bsuccess, int iResult, const ZOOM_SDK_NAMESPACE::zchar_t* szPath) override {}
-    // ---------------------------------
+    virtual void onRecordingMP4Done(bool bsuccess, int iResult, const wchar_t* szPath) override {} // Verified stable path syntax
     virtual void onRecording2MP4Processing(int iPercentage) override {}
     virtual void onCustomizedLocalRecordingSourceNotification(ZOOM_SDK_NAMESPACE::ICustomizedLocalRecordingLayoutHelper* layout_helper) override {}
 #endif
@@ -121,10 +120,8 @@ public:
     virtual void onMeetingParameterNotification(const ZOOM_SDK_NAMESPACE::MeetingParameter* meeting_param) override {}
     virtual void onSuspendParticipantsActivities() override {}
     virtual void onAICompanionActiveChangeNotice(bool bActive) override {}
-    // --- [VERIFIED SIGNATURE] --- Now matching the SDK declaration.
-    virtual void onMeetingTopicChanged(const ZOOM_SDK_NAMESPACE::zchar_t* sTopic) override {}
-    // ---------------------------
-    virtual void onMeetingFullToWatchLiveStream(const ZOOM_SDK_NAMESPACE::zchar_t* sLiveStreamUrl) override {}
+    virtual void onMeetingTopicChanged(const wchar_t* sTopic) override {} // Verified stable path syntax
+    virtual void onMeetingFullToWatchLiveStream(const wchar_t* sLiveStreamUrl) override {} // Verified stable path syntax
     virtual void onUserNetworkStatusChanged(ZOOM_SDK_NAMESPACE::MeetingComponentType type, ZOOM_SDK_NAMESPACE::ConnectionQuality level, unsigned int userId, bool uplink) override {}
 #if defined(WIN32)
     virtual void onAppSignalPanelUpdated(ZOOM_SDK_NAMESPACE::IMeetingAppSignalHandler* pHandler) override {}
@@ -144,7 +141,7 @@ public:
                 joinParam.userType = ZOOM_SDK_NAMESPACE::SDK_UT_WITHOUT_LOGIN;
                 ZOOM_SDK_NAMESPACE::JoinParam4WithoutLogin& param = joinParam.param.withoutloginuserJoin;
                 param.meetingNumber = 7723013754ULL; 
-                param.userName = L"ISO for OBS"; 
+                param.userName = L"ISO for OBS"; // The name we are checking for!
                 param.isAudioOff = true;
                 param.isVideoOff = true;
                 meeting_service->Join(joinParam);
@@ -184,7 +181,7 @@ public:
     ZoomScreenshareSource(obs_source_t* src) : source(src) {}
 };
 
-// --- PROPERTIES (Verified Logic) ---
+// --- PROPERTIES (verified for Guest Join mode) ---
 static obs_properties_t* zp_properties(void* data) {
     obs_properties_t* props = obs_properties_create();
     
@@ -216,71 +213,13 @@ static obs_properties_t* zp_properties(void* data) {
                     unsigned int uid = userList->GetItem(i);
                     ZOOM_SDK_NAMESPACE::IUserInfo* info = part_ctrl->GetUserByUserID(uid);
                     if (info) {
-                        // FIX: Check if this user is the Host (me, the single David)
-                        // In Single-Client mode, we are the host, so we hide the Host UID.
-                        // We also check for 'IsMySelf' which is a standard SDK safety check.
-                        if (info->IsHost() || info->IsMySelf()) {
-                            continue; // Skip this user (don't add to list)
+                        std::wstring wname = info->GetUserName();
+
+                        // THE SURGICAL FIX (For Guest Mode):
+                        // We check the wstring directly to avoid another unnecessary conversion.
+                        // Skip if the user is me (the guest bot 'ISO for OBS').
+                        if (wname == L"ISO for OBS") {
+                            continue;
                         }
 
-                        std::wstring wname = info->GetUserName();
-                        int size_needed = WideCharToMultiByte(CP_UTF8, 0, &wname[0], (int)wname.size(), NULL, 0, NULL, NULL);
-                        std::string name(size_needed, 0);
-                        WideCharToMultiByte(CP_UTF8, 0, &wname[0], (int)wname.size(), &name[0], size_needed, NULL, NULL);
-                        obs_property_list_add_int(list, name.c_str(), (long long)uid);
-                    }
-                }
-            }
-        }
-    }
-    return props;
-}
-
-void* zp_create(obs_data_t* settings, obs_source_t* source) { return new ZoomParticipantSource(source); }
-void zp_destroy(void* data) { delete static_cast<ZoomParticipantSource*>(data); }
-void zp_update(void* data, obs_data_t* settings) { static_cast<ZoomParticipantSource*>(data)->update(settings); }
-void* zs_create(obs_data_t* settings, obs_source_t* source) { return new ZoomScreenshareSource(source); }
-void zs_destroy(void* data) { delete static_cast<ZoomScreenshareSource*>(data); }
-
-struct obs_source_info zoom_participant_info = {};
-struct obs_source_info zoom_screenshare_info = {};
-
-OBS_DECLARE_MODULE()
-OBS_MODULE_USE_DEFAULT_LOCALE("obs-zoom-connector", "en-US")
-
-bool obs_module_load(void) {
-    zoom_participant_info.id = "zoom_participant_source";
-    zoom_participant_info.type = OBS_SOURCE_TYPE_INPUT;
-    zoom_participant_info.output_flags = OBS_SOURCE_ASYNC_VIDEO;
-    zoom_participant_info.get_name = [](void*) { return "Zoom Participant"; };
-    zoom_participant_info.create = zp_create;
-    zoom_participant_info.destroy = zp_destroy;
-    zoom_participant_info.get_properties = zp_properties;
-    zoom_participant_info.update = zp_update;
-    // Note: Portable mode is still missing the data folder mapping, so no icon for the list.
-    obs_register_source(&zoom_participant_info);
-
-    zoom_screenshare_info.id = "zoom_screenshare_source";
-    zoom_screenshare_info.type = OBS_SOURCE_TYPE_INPUT;
-    zoom_screenshare_info.output_flags = OBS_SOURCE_ASYNC_VIDEO;
-    zoom_screenshare_info.get_name = [](void*) { return "Zoom Screenshare"; };
-    zoom_screenshare_info.create = zs_create;
-    zoom_screenshare_info.destroy = zs_destroy;
-    // Note: Screen share will get its own logic later.
-    obs_register_source(&zoom_screenshare_info);
-
-    ZOOM_SDK_NAMESPACE::InitParam initParam;
-    initParam.strWebDomain = L"https://zoom.us";
-    if (ZOOM_SDK_NAMESPACE::InitSDK(initParam) == ZOOM_SDK_NAMESPACE::SDKERR_SUCCESS) {
-        ZOOM_SDK_NAMESPACE::IAuthService* auth_service = nullptr;
-        if (ZOOM_SDK_NAMESPACE::CreateAuthService(&auth_service) == ZOOM_SDK_NAMESPACE::SDKERR_SUCCESS && auth_service) {
-            auth_service->SetEvent(&g_authListener);
-            ZOOM_SDK_NAMESPACE::AuthContext authContext;
-            authContext.jwt_token = L"eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJhcHBLZXkiOiJZNzNqelFSbVF4aWhoNFo3MnFSMnRnIiwiaWF0IjoxNzc0MDUwMDAwLCJleHAiOjE3NzY2NDIwMDAsInRva2VuRXhwIjoxNzc2NjQyMDAwLCJyb2xlIjoxLCJ1c2VyRW1haWwiOiJEYXZpZEBMZXRzRG9WaWRlby5jb20ifQ.1ldmzxzK-gdzWJkxr7KkkwnYq8qEnbMGVTJFihAhuEA"; 
-            auth_service->SDKAuth(authContext);
-        }
-    }
-    return true;
-}
-
-void obs_module_unload(void) {}
+                        // Convert name
