@@ -93,7 +93,7 @@ public:
     virtual void onEnableAndStartSmartRecordingRequested(ZOOM_SDK_NAMESPACE::IRequestEnableAndStartSmartRecordingHandler* handler) override {}
     virtual void onSmartRecordingEnableActionCallback(ZOOM_SDK_NAMESPACE::ISmartRecordingEnableActionHandler* handler) override {}
 #if defined(WIN32)
-    virtual void onRecording2MP4Done(bool bsuccess, int iResult, const zchar_t* szPath) override {}
+    virtual void onRecordingMP4Done(bool bsuccess, int iResult, const zchar_t* szPath) override {}
     virtual void onRecording2MP4Processing(int iPercentage) override {}
     virtual void onCustomizedLocalRecordingSourceNotification(ZOOM_SDK_NAMESPACE::ICustomizedLocalRecordingLayoutHelper* layout_helper) override {}
 #endif
@@ -212,6 +212,13 @@ static obs_properties_t* zp_properties(void* data) {
                     unsigned int uid = userList->GetItem(i);
                     ZOOM_SDK_NAMESPACE::IUserInfo* info = part_ctrl->GetUserByUserID(uid);
                     if (info) {
+                        // FIX: Check if this user is the Host (me, the single David)
+                        // In Single-Client mode, we are the host, so we hide the Host UID.
+                        // We also check for 'IsMySelf' which is a standard SDK safety check.
+                        if (info->IsHost() || info->IsMySelf()) {
+                            continue; // Skip this user (don't add to list)
+                        }
+
                         std::wstring wname = info->GetUserName();
                         int size_needed = WideCharToMultiByte(CP_UTF8, 0, &wname[0], (int)wname.size(), NULL, 0, NULL, NULL);
                         std::string name(size_needed, 0);
@@ -246,7 +253,7 @@ bool obs_module_load(void) {
     zoom_participant_info.destroy = zp_destroy;
     zoom_participant_info.get_properties = zp_properties;
     zoom_participant_info.update = zp_update;
-    zoom_participant_info.icon_type = OBS_ICON_TYPE_CUSTOM; 
+    // Note: Portable mode is still missing the data folder mapping, so no icon for the list.
     obs_register_source(&zoom_participant_info);
 
     zoom_screenshare_info.id = "zoom_screenshare_source";
@@ -255,7 +262,7 @@ bool obs_module_load(void) {
     zoom_screenshare_info.get_name = [](void*) { return "Zoom Screenshare"; };
     zoom_screenshare_info.create = zs_create;
     zoom_screenshare_info.destroy = zs_destroy;
-    zoom_screenshare_info.icon_type = OBS_ICON_TYPE_CUSTOM;
+    // Note: Screen share will get its own logic later.
     obs_register_source(&zoom_screenshare_info);
 
     ZOOM_SDK_NAMESPACE::InitParam initParam;
@@ -265,11 +272,4 @@ bool obs_module_load(void) {
         if (ZOOM_SDK_NAMESPACE::CreateAuthService(&auth_service) == ZOOM_SDK_NAMESPACE::SDKERR_SUCCESS && auth_service) {
             auth_service->SetEvent(&g_authListener);
             ZOOM_SDK_NAMESPACE::AuthContext authContext;
-            authContext.jwt_token = L"eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJhcHBLZXkiOiJZNzNqelFSbVF4aWhoNFo3MnFSMnRnIiwiaWF0IjoxNzc0MDUwMDAwLCJleHAiOjE3NzY2NDIwMDAsInRva2VuRXhwIjoxNzc2NjQyMDAwLCJyb2xlIjoxLCJ1c2VyRW1haWwiOiJEYXZpZEBMZXRzRG9WaWRlby5jb20ifQ.1ldmzxzK-gdzWJkxr7KkkwnYq8qEnbMGVTJFihAhuEA"; 
-            auth_service->SDKAuth(authContext);
-        }
-    }
-    return true;
-}
-
-void obs_module_unload(void) {}
+            authContext.jwt_token = L"eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJhcHBLZXkiOiJZNzNqelFSbVF4aWhoNFo3MnFSMnRnIiwiaWF0IjoxNzc0MDUwMDAwLCJleHAiOjE3NzY2NDIwMDAsInRva2VuRXhwIjoxNzc2NjQyMDAwLCJyb
