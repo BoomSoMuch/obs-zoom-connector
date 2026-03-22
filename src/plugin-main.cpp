@@ -213,6 +213,7 @@ static obs_properties_t* zp_properties(void* data) {
                     ZOOM_SDK_NAMESPACE::IUserInfo* info = part_ctrl->GetUserByUserID(uid);
                     if (info) {
                         std::wstring wname = info->GetUserName();
+                        if (wname == L"ISO for OBS") continue;
                         int size_needed = WideCharToMultiByte(CP_UTF8, 0, &wname[0], (int)wname.size(), NULL, 0, NULL, NULL);
                         std::string name(size_needed, 0);
                         WideCharToMultiByte(CP_UTF8, 0, &wname[0], (int)wname.size(), &name[0], size_needed, NULL, NULL);
