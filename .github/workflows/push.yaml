@@ -1,4 +1,8 @@
 name: Push
+permissions:
+  actions: read
+  contents: read
+  security-events: write
 run-name: ${{ github.ref_name }} push run 🚀
 on:
   push:
